@@ -19,7 +19,6 @@ import { nanoid } from 'nanoid';
 import { createBlock, validateBlockInSwimlane } from './utils/blockCreation';
 
 import '@xyflow/react/dist/style.css';
-import './App.css';
 import './xy-theme.css';
 
 import Topbar from './components/Topbar';
