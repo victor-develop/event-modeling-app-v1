@@ -1,0 +1,9 @@
+export const RELATION_CONSTANTS = {
+  PORT_PADDING: 10,
+  PORT_GAP: 5,
+  FIELD_HEIGHT: 27,
+  TOP_HEIGHT: 52,
+  SEARCHBAR_HEIGHT: 30,
+};
+
+export const PRINT_PREVIEW_FIELD_HEIGHT = "auto";

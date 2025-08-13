@@ -1,0 +1,68 @@
+{
+  "name": "graphql-editor",
+  "version": "7.3.1",
+  "private": false,
+  "license": "MIT",
+  "description": "Visual node editor for GraphQL",
+  "homepage": "https://graphqleditor.com",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "rimraf lib tsconfig.build.tsbuildinfo && ttsc --build tsconfig.build.json",
+    "start": "ttsc --build tsconfig.build.json --watch",
+    "test": "jest",
+    "updatedeps": "npm i graphql-js-tree@latest",
+    "lint": "eslint \"./src/**/*.{ts,js}\" --quiet --fix && prettier --write \"./src/**/*.{ts,js}\" "
+  },
+  "resolutions": {
+    "@types/react": "^16.9.11"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/graphql-editor/graphql-editor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/graphql-editor/graphql-editor.git"
+  },
+  "peerDependencies": {
+    "@monaco-editor/react": ">=4.2.2",
+    "css-loader": ">=6.2.0",
+    "file-loader": ">=6.2.0",
+    "monaco-editor": ">=0.27.0",
+    "react": ">=18",
+    "react-dom": ">=18",
+    "webpack": ">=5.53.0",
+    "worker-loader": ">=3.0.8"
+  },
+  "dependencies": {
+    "@aexol-studio/hooks": "^0.2.8",
+    "@aexol-studio/styling-system": "^0.2.21",
+    "@emotion/react": "^11.9.3",
+    "@emotion/styled": "^11.9.3",
+    "color2k": "^1.2.4",
+    "d3": "^7.8.4",
+    "diff": "^5.1.0",
+    "file-saver": "^2.0.5",
+    "framer-motion": "^10.12.16",
+    "fuzzyjs": "^5.0.1",
+    "graphql-editor-worker": "^7.3.0",
+    "graphql-js-tree": "^3.0.1",
+    "graphql-language-service": "3.2.5",
+    "html-to-image": "^1.10.8",
+    "re-resizable": "^6.9.1",
+    "react-laag": "^2.0.4",
+    "react-zoom-pan-pinch": "^3.0.7",
+    "remarkable": "^2.0.1",
+    "unstated-next": "^1.1.0",
+    "yup": "^1.3.3"
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog"
+    }
+  },
+  "devDependencies": {
+    "@types/d3": "^7.4.0",
+    "@types/diff": "^5.0.2"
+  }
+}
