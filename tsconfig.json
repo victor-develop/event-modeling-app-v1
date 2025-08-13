@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "sourceMap": true,
+    "target": "es6",
+    "jsx": "react-jsx",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "experimentalDecorators": true,
+    "declaration": true,
+    "removeComments": true,
+    "noUnusedLocals": true,
+    "esModuleInterop": true,
+    "lib": ["es6", "es7", "esnext", "dom"],
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "rootDir": "./src",
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules"]
+}

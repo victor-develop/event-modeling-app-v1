@@ -1,0 +1,53 @@
+{
+  "name": "event-modeling-prototype-v1",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "webpack serve --port 1570 --hot --open"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@pmmmwh/react-refresh-webpack-plugin": "^0.5.17",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "@types/webpack": "^5.28.0",
+    "@types/webpack-env": "^1.18.8",
+    "babel-loader": "^8.4.1",
+    "css-loader": "^6.11.0",
+    "file-loader": "^6.2.0",
+    "fork-ts-checker-webpack-plugin": "^6.5.3",
+    "html-loader": "^2.1.2",
+    "html-webpack-plugin": "^5.6.3",
+    "react-refresh": "^0.14.2",
+    "style-loader": "^3.3.4",
+    "ts-loader": "^9.5.2",
+    "tsconfig-paths-webpack-plugin": "^3.5.2",
+    "typescript": "^5.9.2",
+    "url-loader": "^4.1.1",
+    "webpack": "^5.101.0",
+    "webpack-cleanup-plugin": "^0.5.1",
+    "webpack-cli": "^4.10.0",
+    "webpack-dev-server": "^4.15.2"
+  },
+  "dependencies": {
+    "@aexol-studio/styling-system": "^0.2.26",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@types/react-router-dom": "^5.3.3",
+    "@xyflow/react": "^12.8.2",
+    "graphql-editor": "^7.3.1",
+    "graphql-js-tree": "^3.0.2",
+    "nanoid": "^5.1.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.7.1",
+    "socket.io-client": "^4.8.1",
+    "y-monaco": "^0.1.6",
+    "y-websocket": "^1.5.4",
+    "yjs": "^13.6.27"
+  }
+}
