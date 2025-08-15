@@ -1,9 +1,9 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { GraphQLEditor } from 'graphql-editor';
 import type { ExternalEditorAPI, PassedSchema } from 'graphql-editor';
 import { useSchemaState } from '../state/schemaState';
 import { findTypeNames, parseSchema } from '../utils/schemaPreservation';
-import { toCamelCase, fromCamelCase, findMostSimilarString } from '../utils/stringUtils';
+import { toCamelCase } from '../utils/stringUtils';
 
 interface SchemaEditorModalProps {
   blockId: string;
@@ -20,7 +20,7 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { schemaData, updateSchema, registerBlock, blockRegistry, updateBlockTitle } = useSchemaState();
+  const { schema, updateSchema, registerBlock } = useSchemaState();
   const editorRef = useRef<ExternalEditorAPI>(null);
   
   // Log when modal opens
@@ -30,12 +30,12 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
         blockId,
         blockTitle,
         blockType,
-        currentSchema: schemaData.code
+        currentSchema: schema.code
       });
       
       // Check if the type exists in the schema
       try {
-        const ast = parseSchema(schemaData.code);
+        const ast = parseSchema(schema.code);
         if (ast) {
           const typeNames = findTypeNames(ast);
           const typeName = toCamelCase(blockTitle);
@@ -47,7 +47,7 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
         console.error('[DEBUG-MODAL] Error parsing schema:', error);
       }
     }
-  }, [isOpen, blockId, blockTitle, blockType, schemaData.code]);
+  }, [isOpen, blockId, blockTitle, blockType, schema.code]);
   
   // Register this block when the component mounts or block details change
   useEffect(() => {
@@ -59,60 +59,7 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
       });
     }
   }, [blockId, blockTitle, blockType, registerBlock]);
-  
-  // Detect schema changes to update block titles
-  const detectSchemaChanges = useCallback((newSchema: string) => {
-    if (!schemaData.code || schemaData.code === newSchema) return;
-    
-    const prevSchema = schemaData.code;
-    
-    // Parse previous and current schema
-    const prevAst = parseSchema(prevSchema);
-    const newAst = parseSchema(newSchema);
-    
-    if (!prevAst || !newAst) return;
-    
-    const prevTypeNames = findTypeNames(prevAst);
-    const newTypeNames = findTypeNames(newAst);
-    
-    console.log('Detecting schema changes:', { prevTypeNames, newTypeNames });
-    
-    // Find blocks that might need title updates
-    blockRegistry.forEach(block => {
-      const blockTypeName = toCamelCase(block.title);
-      
-      // Skip if the type still exists with the same name
-      if (newTypeNames.includes(blockTypeName)) return;
-      
-      // Check if the type was removed completely (not just renamed)
-      if (!prevTypeNames.includes(blockTypeName)) return;
-      
-      // For command blocks, also check input and result types
-      let commandTypesExist = false;
-      if (block.type === 'command') {
-        const inputType = `${blockTypeName}Input`;
-        const resultType = `${blockTypeName}Result`;
-        commandTypesExist = newTypeNames.includes(inputType) || newTypeNames.includes(resultType);
-        if (commandTypesExist) return;
-      }
-      
-      console.log('Looking for similar type to:', blockTypeName);
-      
-      // Find the most similar type name in the new schema
-      const similarType = findMostSimilarString(blockTypeName, newTypeNames, 0.7);
-      if (similarType) {
-        console.log('Found similar type:', similarType);
-        // Update block title based on the renamed type
-        const newTitle = fromCamelCase(similarType.string);
-        if (newTitle !== block.title) {
-          console.log('Updating block title from', block.title, 'to', newTitle);
-          // Use updateBlockTitle to ensure bidirectional sync
-          updateBlockTitle(block.id, newTitle);
-        }
-      }
-    });
-  }, [blockRegistry, updateBlockTitle, schemaData.code]);
-  
+
   // Focus on the current block type when the editor opens
   useEffect(() => {
     if (isOpen && editorRef.current) {
@@ -199,28 +146,26 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
           {/* Debug schema before passing to editor */}
           {(() => {
             console.log('[DEBUG-EDITOR] Schema being passed to GraphQL Editor:');
-            console.log('[DEBUG-EDITOR] Code:', JSON.stringify(schemaData.code));
-            console.log('[DEBUG-EDITOR] Libraries:', JSON.stringify(schemaData.libraries || ''));
-            console.log('[DEBUG-EDITOR] Code length:', schemaData.code.length);
-            console.log('[DEBUG-EDITOR] Is empty?', !schemaData.code.trim());
+            console.log('[DEBUG-EDITOR] Code:', JSON.stringify(schema.code));
+            console.log('[DEBUG-EDITOR] Libraries:', JSON.stringify(schema.libraries || ''));
+            console.log('[DEBUG-EDITOR] Code length:', schema.code.length);
+            console.log('[DEBUG-EDITOR] Is empty?', !schema.code.trim());
             return null;
           })()}
           <GraphQLEditor
             ref={editorRef}
             schema={{
-              code: schemaData.code,
-              libraries: schemaData.libraries || '',
-              source: 'outside',
+              code: schema.code,
+              libraries: schema.libraries || '',
+              source: 'outside' as const,
             }}
             setSchema={(newSchema: PassedSchema) => {
-              // Process schema changes to detect type name updates
-              detectSchemaChanges(newSchema.code);
-              
               // Update schema with source tracking to prevent infinite loops
               updateSchema({
                 code: newSchema.code,
                 libraries: newSchema.libraries || '',
-              }, 'schema-editor');
+                source: 'code' as const,
+              });
             }}
             path="schema.graphql"
             title="Event Modeling Schema"

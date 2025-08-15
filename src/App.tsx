@@ -1,7 +1,9 @@
 import React, { useCallback, useReducer, useState, useMemo } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ToastProvider, useToast } from './context/ToastContext';
 import { SchemaProvider, getSchemaState } from './state/schemaState';
 import { SchemaModalProvider } from './components/SchemaEditorModalManager';
+import { Example } from './Example';
 import {
   ReactFlow,
   MiniMap,
@@ -645,14 +647,14 @@ const dispatchRemoveNode = useCallback(
   const onExportEvents = useCallback(() => {
     const schemaState = getSchemaState();
     if (!schemaState) return;
-    const { schemaData, blockRegistry } = schemaState;
+    const { schema, blockRegistry } = schemaState;
     
     const modelState = {
       nodes,
       edges,
       events,
       currentEventIndex,
-      schemaData,
+      schema,
       blockRegistry
     };
     
@@ -708,9 +710,10 @@ const dispatchRemoveNode = useCallback(
             if (parsedContent.schemaData) {
               const typedSchemaData = {
                 code: typeof parsedContent.schemaData?.code === 'string' ? parsedContent.schemaData.code : '',
-                libraries: typeof parsedContent.schemaData?.libraries === 'string' ? parsedContent.schemaData.libraries : ''
+                libraries: typeof parsedContent.schemaData?.libraries === 'string' ? parsedContent.schemaData.libraries : '',
+                source: 'outside' as const
               };
-              updateSchema(typedSchemaData, 'import');
+              updateSchema(typedSchemaData);
             }
             
             // Import block registry if it exists
@@ -741,8 +744,9 @@ const dispatchRemoveNode = useCallback(
               if (combinedCode) {
                 updateSchema({
                   code: combinedCode.trim(),
-                  libraries: ''
-                }, 'import');
+                  libraries: '',
+                  source: 'outside'
+                });
               }
             }
             
@@ -1017,7 +1021,12 @@ const App = () => {
     <ToastProvider>
       <SchemaProvider>
         <SchemaModalProvider>
-          <AppContent />
+          <Router>
+            <Routes>
+              <Route path="/" element={<AppContent />} />
+              <Route path="/debug-example" element={<Example />} />
+            </Routes>
+          </Router>
         </SchemaModalProvider>
       </SchemaProvider>
     </ToastProvider>

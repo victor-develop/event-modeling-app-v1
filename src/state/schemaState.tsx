@@ -1,15 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import type { BlockInfo, SchemaChangeSource, SchemaData, TypeNameUpdate } from '../types/schema';
+import { PassedSchema } from 'graphql-editor';
+import type { BlockInfo, TypeNameUpdate } from '../types/schema';
 import { parseSchema, findTypeNames, updateSchemaTypeNames } from '../utils/schemaPreservation';
 import { toCamelCase } from '../utils/stringUtils';
 
 // Define the schema state interface
 interface SchemaState {
-  schemaData: SchemaData;
+  schema: PassedSchema;
   blockRegistry: BlockInfo[];
-  changeSource: SchemaChangeSource;
   schemaRenameNotification: string | null;
-  updateSchema: (data: SchemaData, source: SchemaChangeSource) => void;
+  updateSchema: (data: PassedSchema) => void;
   registerBlock: (block: BlockInfo) => void;
   unregisterBlock: (blockId: string) => void;
   updateBlockTitle: (blockId: string, newTitle: string) => void;
@@ -17,12 +17,13 @@ interface SchemaState {
   getSchemaAST: () => ReturnType<typeof parseSchema>;
 }
 
-const defaultSchemaData: SchemaData = {
+const defaultSchema: PassedSchema = {
   code: `type Query {
   # Add your queries here
   _empty: String
 }`,
   libraries: '',
+  source: 'outside',
 };
 
 const SchemaContext = createContext<SchemaState | undefined>(undefined);
@@ -103,47 +104,44 @@ export const SchemaProvider: React.FC<SchemaProviderProps> = ({
   children, 
   initialBlockRegistry = [] 
 }) => {
-  const [schemaData, setSchemaData] = useState<SchemaData>(defaultSchemaData);
+  const [schema, setSchema] = useState<PassedSchema>(defaultSchema);
   const [blockRegistry, setBlockRegistry] = useState<BlockInfo[]>(initialBlockRegistry);
   const [initialSchemaGenerated, setInitialSchemaGenerated] = useState(false);
-  const [changeSource, setChangeSource] = useState<SchemaChangeSource>(null);
   const [schemaRenameNotification, setSchemaRenameNotification] = useState<string | null>(null);
   
   // Generate initial schema when blocks are registered
   useEffect(() => {
     if (blockRegistry.length > 0 && !initialSchemaGenerated) {
       const generatedSchema = generateUnifiedSchema(blockRegistry);
-      setSchemaData(prev => ({ ...prev, code: generatedSchema }));
+      setSchema(prev => ({ ...prev, code: generatedSchema, source: 'outside' }));
       setInitialSchemaGenerated(true);
-      setChangeSource('initialization');
     }
   }, [blockRegistry, initialSchemaGenerated]);
   
   // Parse schema to AST for type name lookups
   const getSchemaAST = useCallback(() => {
     try {
-      return parseSchema(schemaData.code);
+      return parseSchema(schema.code);
     } catch (error) {
       console.error('Error parsing schema:', error);
       return null;
     }
-  }, [schemaData.code]);
+  }, [schema.code]);
   
   // Update schema with change source tracking
-  const updateSchema = useCallback((data: SchemaData, source: SchemaChangeSource) => {
-    console.log('[DEBUG] Updating schema with source:', source);
-    console.log('[DEBUG] Previous schema code:', schemaData.code);
+  const updateSchema = useCallback((data: PassedSchema) => {
+    console.log('[DEBUG] Updating schema with source:', data.source);
+    console.log('[DEBUG] Previous schema code:', schema.code);
     console.log('[DEBUG] New schema code:', data.code);
-    console.log('[DEBUG] Are they equal?', schemaData.code === data.code);
+    console.log('[DEBUG] Are they equal?', schema.code === data.code);
     
     // Always set schema data first
-    setSchemaData(data);
-    setChangeSource(source);
+    setSchema(data);
     
     // If this is a schema editor update, check for type name changes
-    if (source === 'schema-editor' && schemaData.code !== data.code) {
+    if (data.source === 'code' && schema.code !== data.code) {
       try {
-        const prevAst = parseSchema(schemaData.code);
+        const prevAst = parseSchema(schema.code);
         const newAst = parseSchema(data.code);
         
         console.log('[DEBUG] Parsed ASTs:', { prevAst: !!prevAst, newAst: !!newAst });
@@ -190,33 +188,11 @@ export const SchemaProvider: React.FC<SchemaProviderProps> = ({
       }
     } else {
       console.log('[DEBUG] Not checking for type changes:', { 
-        isSchemaEditor: source === 'schema-editor', 
-        codeChanged: schemaData.code !== data.code 
+        isCodeEditor: data.source === 'code', 
+        codeChanged: schema.code !== data.code 
       });
     }
-    
-    // For tests, we need to ensure the change source persists long enough to be verified
-    // Only reset after tests have had a chance to verify the change source
-    if (source === 'ui') {
-      // For UI changes, wait longer before resetting to allow tests to verify
-      setTimeout(() => {
-        console.log('[DEBUG] Resetting change source from', source, 'to null');
-        setChangeSource(null);
-      }, 100); // Shorter timeout for immediate feedback
-    } else if (source === 'schema-editor') {
-      // For schema editor changes, handle special case for block title updates
-      setTimeout(() => {
-        console.log('[DEBUG] Resetting schema-editor change source');
-        setChangeSource(null);
-      }, 100); // Shorter timeout for immediate feedback
-    } else {
-      // For other sources, use standard timeout
-      setTimeout(() => {
-        console.log('[DEBUG] Resetting change source from', source, 'to null');
-        setChangeSource(null);
-      }, 100); // Shorter timeout for immediate feedback
-    }
-  }, [blockRegistry, schemaData.code]);
+  }, [blockRegistry, schema.code]);
   
   // Register a block in the registry
   const registerBlock = useCallback((block: BlockInfo) => {
@@ -239,12 +215,12 @@ export const SchemaProvider: React.FC<SchemaProviderProps> = ({
   
   // Update a block title with schema synchronization
   const updateBlockTitle = useCallback((blockId: string, newTitle: string) => {
-    console.log('[DEBUG] Updating block title:', blockId, newTitle, 'changeSource:', changeSource);
-    console.log('[DEBUG] Current schemaData:', schemaData);
+    console.log('[DEBUG] Updating block title:', blockId, newTitle, 'schema.source:', schema.source);
+    console.log('[DEBUG] Current schema:', schema);
     
-    // Only proceed if change didn't originate from schema editor
-    if (changeSource === 'schema-editor') {
-      console.log('[DEBUG] Skipping block title update as change came from schema editor');
+    // Only proceed if change didn't originate from code editor
+    if (schema.source === 'code') {
+      console.log('[DEBUG] Skipping block title update as change came from code editor');
       return;
     }
     
@@ -308,16 +284,17 @@ export const SchemaProvider: React.FC<SchemaProviderProps> = ({
         console.log('[DEBUG] Updating schema type names:', updates, 'oldTypeExists:', oldTypeExists);
         
         // Preserve fields while updating type names
-        const result = updateSchemaTypeNames(schemaData.code, updates);
+        const result = updateSchemaTypeNames(schema.code, updates);
         console.log('[DEBUG] Schema update result:', result);
         if (result.success) {
           console.log('[DEBUG] Schema update successful. New schema:');
           console.log(result.schema);
           // Update schema with the new code immediately
           updateSchema({
-            ...schemaData,
-            code: result.schema
-          }, 'ui');
+            ...schema,
+            code: result.schema,
+            source: 'tree'
+          });
         } else {
           console.error('[DEBUG] Failed to update schema type names');
         }
@@ -327,7 +304,7 @@ export const SchemaProvider: React.FC<SchemaProviderProps> = ({
       
       return updatedRegistry;
     });
-  }, []);
+  }, [schema.source, schema.code, getSchemaAST, updateSchema]);
 
 // Generate a unified schema from the block registry
 const generateSchema = useCallback(() => {
@@ -336,9 +313,8 @@ const generateSchema = useCallback(() => {
 
 // Create the context value
 const contextValue = {
-  schemaData,
+  schema,
   blockRegistry,
-  changeSource,
   schemaRenameNotification,
   updateSchema,
   registerBlock,

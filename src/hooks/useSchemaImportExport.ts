@@ -1,12 +1,13 @@
 import { useCallback } from 'react';
 import { useSchemaState } from '../state/schemaState';
+import { PassedSchema } from 'graphql-editor';
 
 /**
  * Custom hook for handling schema import and export functionality
  * This hook provides functions to integrate with the existing import/export flow
  */
 export const useSchemaImportExport = () => {
-  const { schemaData, blockRegistry, updateSchema, registerBlock } = useSchemaState();
+  const { schema, blockRegistry, updateSchema, registerBlock } = useSchemaState();
 
   /**
    * Adds schema data to the export object
@@ -16,24 +17,26 @@ export const useSchemaImportExport = () => {
   const addSchemaToExport = useCallback((exportData: any) => {
     return {
       ...exportData,
-      schemaData,
+      schema,
       blockRegistry
     };
-  }, [schemaData, blockRegistry]);
+  }, [schema, blockRegistry]);
 
   /**
    * Imports schema data from imported data
    * @param importedData The imported data containing schema information
    */
   const importSchemaFromData = useCallback((importedData: any) => {
-    // Import schema data if it exists
-    if (importedData.schemaData) {
-      // Ensure schema data has the correct type
-      const typedSchemaData = {
-        code: typeof importedData.schemaData?.code === 'string' ? importedData.schemaData.code : '',
-        libraries: typeof importedData.schemaData?.libraries === 'string' ? importedData.schemaData.libraries : ''
+    // Import schema data if it exists (support both old 'schemaData' and new 'schema' formats)
+    const schemaToImport = importedData.schema || importedData.schemaData;
+    if (schemaToImport) {
+      // Ensure schema data has the correct PassedSchema type
+      const typedSchema: PassedSchema = {
+        code: typeof schemaToImport?.code === 'string' ? schemaToImport.code : '',
+        libraries: typeof schemaToImport?.libraries === 'string' ? schemaToImport.libraries : '',
+        source: 'outside' as const
       };
-      updateSchema(typedSchemaData, 'import');
+      updateSchema(typedSchema);
     }
     
     // Import block registry if it exists
@@ -53,9 +56,8 @@ export const useSchemaImportExport = () => {
       });
     }
     
-    // Handle legacy schema format (per-block schemas)
-    if (importedData.schemas && !importedData.schemaData) {
-      // Convert old format to new format
+    // Handle legacy schemas format (for backward compatibility)
+    if (importedData.schemas && !importedData.schemaData && !importedData.schema) {
       let combinedCode = '';
       
       // Extract all schemas and combine them
@@ -66,10 +68,12 @@ export const useSchemaImportExport = () => {
       });
       
       if (combinedCode) {
-        updateSchema({
+        const typedSchema: PassedSchema = {
           code: combinedCode.trim(),
-          libraries: ''
-        }, 'import');
+          libraries: '',
+          source: 'outside' as const
+        };
+        updateSchema(typedSchema);
       }
     }
   }, [updateSchema, registerBlock]);

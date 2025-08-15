@@ -1,5 +1,6 @@
 import { getSchemaState } from '../state/schemaState';
-import type { SchemaData, BlockInfo } from '../types/schema';
+import { PassedSchema } from 'graphql-editor';
+import type { BlockInfo } from '../types/schema';
 
 /**
  * Exports the current schema data and block registry to the provided export data object
@@ -10,11 +11,11 @@ export const addSchemaToExport = (exportData: any) => {
   const state = getSchemaState();
   if (!state) return exportData;
 
-  const { schemaData, blockRegistry } = state;
+  const { schema, blockRegistry } = state;
   
   return {
     ...exportData,
-    schemaData,
+    schema,
     blockRegistry
   };
 };
@@ -29,14 +30,16 @@ export const importSchemaFromData = (importedData: any) => {
 
   const { updateSchema, registerBlock } = state;
   
-  // Import schema data if it exists
-  if (importedData.schemaData) {
-    // Ensure schema data has the correct type
-    const typedSchemaData: SchemaData = {
-      code: typeof importedData.schemaData?.code === 'string' ? importedData.schemaData.code : '',
-      libraries: typeof importedData.schemaData?.libraries === 'string' ? importedData.schemaData.libraries : ''
+  // Import schema data if it exists (support both old 'schemaData' and new 'schema' formats)
+  const schemaToImport = importedData.schema || importedData.schemaData;
+  if (schemaToImport) {
+    // Ensure schema data has the correct PassedSchema type
+    const typedSchema: PassedSchema = {
+      code: typeof schemaToImport?.code === 'string' ? schemaToImport.code : '',
+      libraries: typeof schemaToImport?.libraries === 'string' ? schemaToImport.libraries : '',
+      source: 'outside' as const
     };
-    updateSchema(typedSchemaData, 'import');
+    updateSchema(typedSchema);
   }
   
   // Import block registry if it exists
@@ -55,7 +58,7 @@ export const importSchemaFromData = (importedData: any) => {
   }
   
   // Handle legacy schema format (per-block schemas)
-  if (importedData.schemas && !importedData.schemaData) {
+  if (importedData.schemas && !importedData.schemaData && !importedData.schema) {
     // Convert old format to new format
     let combinedCode = '';
     
@@ -67,13 +70,12 @@ export const importSchemaFromData = (importedData: any) => {
     });
     
     if (combinedCode) {
-      updateSchema(
-        {
-          code: combinedCode.trim(),
-          libraries: '',
-        },
-        'import',
-      );
+      const typedSchema: PassedSchema = {
+        code: combinedCode.trim(),
+        libraries: '',
+        source: 'outside' as const
+      };
+      updateSchema(typedSchema);
     }
   }
 };
