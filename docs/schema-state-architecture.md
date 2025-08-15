@@ -49,8 +49,8 @@ interface PassedSchema {
 | Function | Purpose | Loop Prevention |
 |----------|---------|-----------------|
 | `updateSchema(data: PassedSchema)` | Updates schema with source tracking | ✅ Via `data.source` |
-| `registerBlock(block: BlockInfo)` | Adds/updates blocks | ✅ Via source checking |
-| `updateBlockTitle(blockId, newTitle)` | Updates block + schema sync | ✅ Via `schema.source` |
+| `registerBlock(block: BlockInfo)` | Adds/updates blocks, handles title changes | ✅ Via idempotent sync |
+| `unregisterBlock(blockId)` | Removes blocks from registry | ✅ Via registry updates |
 
 ## Bidirectional Sync Flow
 
@@ -161,10 +161,10 @@ Both block creation and title updates now use the **same idempotent logic** to e
 │  1. User edits block title inline                                  │
 │     │                                                               │
 │     ▼                                                               │
-│  2. dispatch(UPDATE_NODE_LABEL) → setTimeout → updateBlockTitle()   │
+│  2. dispatch(UPDATE_NODE_LABEL) → updates node state               │
 │     │                                                               │
 │     ▼                                                               │
-│  3. updateBlockTitle() updates block in blockRegistry              │
+│  3. Components detect state change via useEffect hooks             │
 │     │                                                               │
 │     ▼                                                               │
 │  4. SAME useEffect([blockRegistry, schema.code]) triggers          │
@@ -174,12 +174,11 @@ Both block creation and title updates now use the **same idempotent logic** to e
 │     │                                                               │
 │     ▼                                                               │
 │  6. SAME ensureBlockHasSchemaType() logic                          │
-│     │                                                               │
+│     │   • Checks if types for new title exist                      │
+│     │   • Adds missing types if needed                             │
+│     │   • Preserves existing custom fields                         │
 │     ▼                                                               │
-│  7. PLUS: updateSchemaTypeNames() for existing type renames        │
-│     │     (preserves custom fields during renames)                 │
-│     ▼                                                               │
-│  8. If schema changed: setSchema({...prev, code: newSchema})       │
+│  7. If schema changed: setSchema({...prev, code: newSchema})       │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -198,12 +197,17 @@ Both block creation and title updates now use the **same idempotent logic** to e
 
 **✅ Consistent Behavior:**
 - Predictable outcomes regardless of trigger
-- No more "nuclear regeneration" vs "surgical preservation"
+- Single unified flow for all block operations
 - Developer-friendly approach to schema management
+
+**✅ Simplified Architecture:**
+- Removed complex `updateBlockTitle()` function
+- Single path through `registerBlock()` for all block changes
+- Eliminated duplicate type creation issues
 
 ### **Detailed Steps**
 
-1. **Block Registration**: `registerBlock()` or `updateBlockTitle()` updates the block registry
+1. **Block Registration**: `registerBlock()` updates the block registry (handles both new blocks and title changes)
 2. **Dependency Trigger**: `useEffect()` detects registry changes and calls `syncBlocksWithSchema()`
 3. **Idempotent Sync**: For each block, `ensureBlockHasSchemaType()` checks if corresponding GraphQL type exists
 4. **Conditional Addition**: Only missing types are added via `addMissingTypeToSchema()`
@@ -211,13 +215,15 @@ Both block creation and title updates now use the **same idempotent logic** to e
 
 ### **Before vs After Comparison**
 
-| Aspect | Before (Inconsistent) | After (Unified) |
-|--------|----------------------|-----------------|
-| **Block Creation** | Nuclear regeneration | Idempotent check |
-| **Title Updates** | Surgical preservation | Idempotent check |
-| **Custom Fields** | ❌ Lost on creation | ✅ Always preserved |
-| **Behavior** | ❌ Inconsistent | ✅ Predictable |
-| **Developer UX** | ❌ Frustrating | ✅ Safe to customize |
+| Aspect | Before (Complex) | After (Simplified) |
+|--------|------------------|-------------------|
+| **Block Creation** | `registerBlock()` → sync | `registerBlock()` → sync |
+| **Title Updates** | `updateBlockTitle()` → complex renaming | `registerBlock()` → sync |
+| **Architecture** | Two separate flows | Single unified flow |
+| **Duplicate Types** | ❌ Possible conflicts | ✅ Prevented by idempotency |
+| **Custom Fields** | ✅ Preserved | ✅ Always preserved |
+| **Behavior** | ❌ Two different paths | ✅ Consistent single path |
+| **Developer UX** | ❌ Complex debugging | ✅ Simple and predictable |
 
 ### **GraphQL Editor Reflection**
 

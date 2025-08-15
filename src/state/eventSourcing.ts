@@ -204,49 +204,9 @@ const updateNodeProperty = <T>(
 const handleUpdateNodeLabel = (payload: { nodeId: string; label: string }, state: CanvasState): CanvasState => {
   console.log('[DEBUG] handleUpdateNodeLabel called with:', payload);
   
-  // First update the node property in the state
-  const updatedState = updateNodeProperty(payload.nodeId, ['data', 'label'], payload.label, state);
-  
-  // Find the node that was updated
-  const updatedNode = updatedState.nodes.find(node => node.id === payload.nodeId);
-  if (!updatedNode) return updatedState;
-  
-  // Only trigger schema update for command, event, or view nodes
-  const nodeType = updatedNode.type;
-  if (nodeType === 'command' || nodeType === 'event' || nodeType === 'view') {
-    try {
-      // Use setTimeout to ensure this runs after the state update is complete
-      setTimeout(async () => {
-        try {
-          // Import at runtime to avoid circular dependencies
-          const { getSchemaState } = await import('./schemaState');
-          console.log('[DEBUG] Schema state module loaded');
-          
-          const schemaState = getSchemaState();
-          console.log('[DEBUG] Got schema state:', schemaState ? 'yes' : 'no');
-          
-          if (schemaState && typeof schemaState.registerBlock === 'function') {
-            console.log('[DEBUG] Updating block registry for node:', updatedNode.id, payload.label);
-            // Re-register the block with new title - useEffect will handle schema sync
-            schemaState.registerBlock({
-              id: updatedNode.id,
-              title: payload.label,
-              type: updatedNode.data.blockType
-            });
-          } else {
-            console.error('[DEBUG] Schema state or registerBlock not available:', 
-              schemaState ? `Has registerBlock: ${typeof schemaState.registerBlock}` : 'No schema state');
-          }
-        } catch (innerError) {
-          console.error('[DEBUG] Error in schema update timeout:', innerError);
-        }
-      }, 0);
-    } catch (error) {
-      console.error('[DEBUG] Error setting up schema update:', error);
-    }
-  }
-  
-  return updatedState;
+  // Update the node property in the state - that's all we need to do
+  // Components will handle schema registration via their own useEffect hooks
+  return updateNodeProperty(payload.nodeId, ['data', 'label'], payload.label, state);
 };
 
 const handleUpdateCommandParameters = (payload: { nodeId: string; parameters: Record<string, string> }, state: CanvasState): CanvasState => 
