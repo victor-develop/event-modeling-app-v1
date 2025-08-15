@@ -45,10 +45,82 @@ This is a React application built with Vite and TypeScript, designed to demonstr
 
 *   **React:** A JavaScript library for building user interfaces.
 *   **TypeScript:** A typed superset of JavaScript that compiles to plain JavaScript with robust type safety.
-*   **Vite:** A fast build tool that provides a lightning-fast development experience.
+*   **Webpack:** Build tool configured for both development and production environments.
 *   **@xyflow/react:** A powerful library for building interactive node-based editors and diagrams.
+*   **GraphQL Editor:** Visual GraphQL schema editor for managing event model schemas.
 *   **nanoid:** A tiny, secure, URL-friendly, unique string ID generator.
-*   **Vitest:** A blazing fast unit-test framework powered by Vite.
+
+## GraphQL Schema Integration
+
+This application integrates with the GraphQL Editor library to provide visual schema editing capabilities. Understanding the `PassedSchema` interface and its `source` parameter is crucial for proper implementation.
+
+### PassedSchema Interface
+
+```typescript
+interface PassedSchema {
+  code: string;           // GraphQL schema code
+  libraries?: string;     // Additional libraries
+  source: "tree" | "code" | "outside";  // Change origin tracking
+}
+```
+
+### Critical: Understanding the 'source' Parameter
+
+The `source` parameter is **automatically set by the GraphQL Editor** and should **never be manually overridden** in most cases. It indicates where the schema change originated:
+
+- **`"code"`** → Changes from the GraphQL code editor (text-based editing)
+- **`"tree"`** → Changes from the visual tree editor (drag-and-drop, visual editing)  
+- **`"outside"`** → External changes (imports, programmatic updates, initialization)
+
+### ❌ Common Mistake - DO NOT DO THIS:
+```typescript
+// WRONG: Overriding the source parameter
+setSchema={(newSchema: PassedSchema) => {
+  updateSchema({
+    ...newSchema,
+    source: 'code'  // ❌ This breaks the editor's internal logic
+  });
+}}
+```
+
+### ✅ Correct Implementation:
+```typescript
+// CORRECT: Pass through the source from GraphQL Editor
+setSchema={(newSchema: PassedSchema) => {
+  updateSchema(newSchema);  // ✅ Preserves the editor's source tracking
+}}
+```
+
+### Why This Matters
+
+The GraphQL Editor uses the `source` parameter internally for:
+- **Loop Prevention**: Avoiding infinite update cycles between code and tree views
+- **UI State Management**: Determining which view should be updated
+- **Change Tracking**: Understanding the origin of modifications for proper handling
+
+### Integration Pattern
+
+When integrating with the GraphQL Editor:
+
+1. **Provide schema with `source: 'outside'`** when passing data TO the editor
+2. **Never modify the `source`** when receiving data FROM the editor
+3. **Let the editor manage its own source tracking** for internal operations
+
+```typescript
+// Correct integration pattern
+<GraphQLEditor
+  schema={{
+    code: schema.code,
+    libraries: schema.libraries,
+    source: 'outside' as const,  // ✅ Indicates external update
+  }}
+  setSchema={(newSchema: PassedSchema) => {
+    updateSchema(newSchema);     // ✅ Pass through unchanged
+  }}
+/>
+```
+
+This pattern ensures proper bidirectional synchronization between your application state and the GraphQL Editor without breaking the editor's internal change tracking mechanisms.
 
 ## Event Modeling Concepts
 

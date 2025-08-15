@@ -245,10 +245,7 @@ In both scenarios, the GraphQL Editor automatically reflects changes because:
 │      source: 'outside'         ← Indicates external update         │
 │    }}                                                               │
 │    setSchema={(newSchema) => {                                      │
-│      updateSchema({                                                 │
-│        ...newSchema,                                                │
-│        source: 'code'          ← Marks as editor change            │
-│      });                                                            │
+│      updateSchema(newSchema);  ← Passes through source from editor │
 │    }}                                                               │
 │  />                                                                 │
 │                                                                     │
@@ -259,11 +256,168 @@ In both scenarios, the GraphQL Editor automatically reflects changes because:
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+## Current Implementation Details
+
+### **Missing Type Addition Strategy**
+
+The current implementation uses a **simple additive approach** when synchronizing blocks with the GraphQL schema:
+
+```typescript
+// Current behavior in ensureBlockHasSchemaType()
+const typeNames = findTypeNames(parsedSchema);
+const expectedTypeName = toCamelCase(block.title);
+
+if (!typeNames.includes(expectedTypeName)) {
+  // Add missing type with minimal structure
+  const newSchema = addMissingTypeToSchema(schema, block);
+  return newSchema;
+}
+```
+
+**Key Characteristics:**
+- **Additive Only**: Only adds missing types, never modifies existing ones
+- **Name-Based Matching**: Uses `toCamelCase(block.title)` to find corresponding GraphQL types
+- **No Tracking**: Cannot track which GraphQL type corresponds to which visual block ID
+- **Rename Limitation**: When block titles change, new types are created instead of renaming existing ones
+
+**Example Scenario:**
+1. Create block "User Registration" → Generates `UserRegistration` type
+2. Rename block to "User Signup" → Generates new `UserSignup` type
+3. Result: Both types exist in schema, no connection to original block
+
+### **Current Sync Flow**
+
+```ascii
+┌─────────────────────────────────────────────────────────────────────┐
+│                    CURRENT IMPLEMENTATION                           │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  Block Title Change: "User Registration" → "User Signup"           │
+│                                                                     │
+│  1. registerBlock({ id: "abc123", title: "User Signup" })          │
+│     │                                                               │
+│     ▼                                                               │
+│  2. syncBlocksWithSchema() checks for "UserSignup" type            │
+│     │                                                               │
+│     ▼                                                               │
+│  3. findTypeNames() returns: ["UserRegistration", ...]             │
+│     │                                                               │
+│     ▼                                                               │
+│  4. "UserSignup" not found → addMissingTypeToSchema()              │
+│     │                                                               │
+│     ▼                                                               │
+│  5. Schema now has BOTH "UserRegistration" AND "UserSignup"        │
+│                                                                     │
+│  ❌ Problem: No way to know "UserRegistration" should be removed    │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Future Iterations
+
+### **Custom Directive Approach for Precise Tracking**
+
+The next major enhancement will implement **custom GraphQL directives** to maintain bidirectional mapping between visual blocks and schema types:
+
+```graphql
+# Future implementation with custom directives
+directive @eventBlock(
+  nodeId: String!
+  blockType: String!
+  version: Int
+) on OBJECT | INPUT_OBJECT
+
+type UserRegistration @eventBlock(
+  nodeId: "abc123"
+  blockType: "command"
+  version: 1
+) {
+  id: ID!
+  email: String!
+  password: String!
+}
+```
+
+### **Enhanced Architecture Goals**
+
+```ascii
+┌─────────────────────────────────────────────────────────────────────┐
+│                      FUTURE ARCHITECTURE                            │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  Block Title Change: "User Registration" → "User Signup"           │
+│                                                                     │
+│  1. registerBlock({ id: "abc123", title: "User Signup" })          │
+│     │                                                               │
+│     ▼                                                               │
+│  2. findTypeByNodeId("abc123") → finds "UserRegistration"          │
+│     │                                                               │
+│     ▼                                                               │
+│  3. renameTypeInSchema("UserRegistration" → "UserSignup")          │
+│     │                                                               │
+│     ▼                                                               │
+│  4. Update @eventBlock directive with new metadata                 │
+│     │                                                               │
+│     ▼                                                               │
+│  5. Schema has ONLY "UserSignup" with preserved custom fields      │
+│                                                                     │
+│  ✅ Solution: Precise tracking and renaming capability             │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### **Future Implementation Benefits**
+
+**🎯 Precise Block-Type Mapping:**
+- Each GraphQL type linked to specific visual block via `nodeId`
+- Enables true rename operations instead of add-only behavior
+- Maintains data integrity during block modifications
+
+**🔄 Bidirectional Synchronization:**
+- Changes in GraphQL Editor can update visual block properties
+- Block metadata stored in schema via custom directives
+- Version tracking for schema evolution
+
+**🧹 Automatic Cleanup:**
+- Remove orphaned types when blocks are deleted
+- Detect and resolve naming conflicts
+- Maintain schema cleanliness over time
+
+**📊 Enhanced Metadata:**
+```graphql
+directive @eventBlock(
+  nodeId: String!           # Visual block unique identifier
+  blockType: String!        # "command" | "event" | "view"
+  version: Int             # Schema version for migrations
+  position: String         # Visual position for layout sync
+  color: String            # Visual styling information
+) on OBJECT | INPUT_OBJECT
+```
+
+### **Migration Strategy**
+
+**Phase 1: Directive Infrastructure**
+- Implement custom directive parsing and generation
+- Add directive support to schema utilities
+- Maintain backward compatibility with current approach
+
+**Phase 2: Enhanced Sync Logic**
+- Replace name-based matching with nodeId-based tracking
+- Implement type renaming capabilities
+- Add orphaned type cleanup
+
+**Phase 3: Advanced Features**
+- Bidirectional property synchronization
+- Visual layout information in schema
+- Schema version management and migrations
+
 ## Key Benefits
 
 - **🎯 Loop Prevention**: Uses GraphQL Editor's built-in source tracking
 - **🔧 Type Safety**: Standardized `PassedSchema` interface
 - **⬅️ Backward Compatibility**: Supports old and new export formats
 - **🚀 Clean Integration**: Aligns with GraphQL Editor patterns
+- **📝 Current Simplicity**: Additive-only approach prevents data loss
+- **🔮 Future Precision**: Custom directives will enable exact block-type tracking
 
-The schema state provides a robust, centralized solution for managing bidirectional synchronization between visual event modeling and GraphQL schema editing with automatic loop prevention.
+The schema state provides a robust, centralized solution for managing bidirectional synchronization between visual event modeling and GraphQL schema editing with automatic loop prevention. The current implementation prioritizes data preservation through additive operations, while future iterations will add precise tracking and renaming capabilities.
