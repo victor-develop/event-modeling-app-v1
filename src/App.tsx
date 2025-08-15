@@ -1,4 +1,4 @@
-import React, { useCallback, useReducer, useState, useMemo } from 'react';
+import React, { useCallback, useReducer, useState, useMemo, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ToastProvider, useToast } from './context/ToastContext';
 import { SchemaProvider, useSchemaState } from './state/schemaState';
@@ -58,6 +58,22 @@ const AppContent = () => {
   
   // Extract nodes and edges from state for convenience
   const { nodes, edges, events, currentEventIndex } = state;
+  
+  // Auto-sync schema when nodes change (new blocks added)
+  useEffect(() => {
+    const blocks = nodes
+      .filter(node => node.data?.label && ['command', 'event', 'view'].includes(node.type))
+      .map(node => ({
+        id: node.id,
+        title: node.data.label,
+        type: node.type as 'command' | 'event' | 'view'
+      }));
+    
+    if (blocks.length > 0) {
+      console.log('[DEBUG] Auto-syncing schema with blocks:', blocks);
+      syncSchemaWithBlocks(blocks);
+    }
+  }, [nodes, syncSchemaWithBlocks]);
   
   // Handle closing the welcome guide
   const handleWelcomeGuideClose = useCallback(() => {
