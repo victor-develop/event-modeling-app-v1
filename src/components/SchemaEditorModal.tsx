@@ -171,7 +171,13 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
               ref={editorRef}
               schema={{
                 code: schema.code,
-                libraries: schema.libraries || '',
+                libraries: schema.libraries || `
+directive @eventModelingBlock(
+  nodeId: String!
+  blockType: String!
+  version: Int
+) on OBJECT | INPUT_OBJECT
+`,
                 source: 'outside' as const,
               }}
               setSchema={(newSchema: PassedSchema) => {

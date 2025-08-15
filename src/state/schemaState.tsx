@@ -2,6 +2,15 @@ import React, { createContext, useCallback, useContext, useState } from 'react';
 import { PassedSchema } from 'graphql-editor';
 import { BlockInfo } from '../types/schema';
 import { parseSchema, findTypeNames } from '../utils/schemaPreservation';
+import { 
+  parseSchemaToAST, 
+  generateSchemaFromAST, 
+  findTypeByNodeId, 
+  addTypeToAST, 
+  renameTypeInAST,
+  findOrphanedTypes,
+  removeTypeFromAST
+} from '../graphql-ast-utils';
 import { toCamelCase } from '../utils/stringUtils';
 
 // Define the schema state interface
@@ -191,6 +200,89 @@ const addMissingTypeToSchema = (currentSchema: string, block: BlockInfo): string
   return updatedSchema;
 };
 
+// Enhanced nodeId-based sync functions
+
+/**
+ * Enhanced function to ensure block has corresponding schema type using nodeId tracking
+ */
+const ensureBlockHasSchemaTypeWithNodeId = (block: BlockInfo, currentSchema: string): string => {
+  console.log(`[DEBUG] ===== ensureBlockHasSchemaTypeWithNodeId for block: ${block.title} (${block.type}) =====`);
+  
+  try {
+    const ast = parseSchemaToAST(currentSchema);
+    
+    // Check if type already exists with this nodeId
+    const existingType = findTypeByNodeId(ast, block.id);
+    
+    if (existingType) {
+      console.log(`[DEBUG] Found existing type with nodeId ${block.id}:`, existingType.name);
+      
+      // Check if type name needs to be updated (rename scenario)
+      const expectedTypeName = toCamelCase(block.title);
+      if (existingType.name !== expectedTypeName) {
+        console.log(`[DEBUG] Renaming type from ${existingType.name} to ${expectedTypeName}`);
+        const renamedAST = renameTypeInAST(ast, existingType.name, expectedTypeName);
+        return generateSchemaFromAST(renamedAST);
+      }
+      
+      // Type exists with correct name, no changes needed
+      return currentSchema;
+    }
+    
+    // Type doesn't exist, create it
+    const typeName = toCamelCase(block.title);
+    console.log(`[DEBUG] Creating new type ${typeName} with nodeId ${block.id}`);
+    
+    const updatedAST = addTypeToAST(ast, typeName, block.type, block.id);
+    return generateSchemaFromAST(updatedAST);
+    
+  } catch (error) {
+    console.error(`[ERROR] Failed to process block ${block.title}:`, error);
+    // Fallback to original name-based logic
+    return addMissingTypeToSchema(currentSchema, block);
+  }
+};
+
+/**
+ * Enhanced sync function that uses nodeId-based tracking
+ */
+const syncBlocksWithSchemaUsingNodeId = (blocks: BlockInfo[], currentSchema: string): string => {
+  console.log(`[DEBUG] ===== syncBlocksWithSchemaUsingNodeId =====`);
+  console.log(`[DEBUG] Processing ${blocks.length} blocks`);
+  
+  let updatedSchema = currentSchema;
+  
+  try {
+    // Process each block to ensure it has a corresponding schema type
+    for (const block of blocks) {
+      updatedSchema = ensureBlockHasSchemaTypeWithNodeId(block, updatedSchema);
+    }
+    
+    // Clean up orphaned types (types that exist in schema but not in blocks)
+    const ast = parseSchemaToAST(updatedSchema);
+    const orphanedTypeNames = findOrphanedTypes(ast, blocks);
+    
+    if (orphanedTypeNames.length > 0) {
+      console.log(`[DEBUG] Found ${orphanedTypeNames.length} orphaned types:`, orphanedTypeNames);
+      
+      let cleanedAST = ast;
+      for (const typeName of orphanedTypeNames) {
+        cleanedAST = removeTypeFromAST(cleanedAST, typeName);
+      }
+      
+      updatedSchema = generateSchemaFromAST(cleanedAST);
+    }
+    
+    console.log(`[DEBUG] Schema sync completed successfully`);
+    return updatedSchema;
+    
+  } catch (error) {
+    console.error(`[ERROR] Failed to sync schema with nodeId tracking:`, error);
+    // Fallback to original name-based logic
+    return syncBlocksWithSchema(blocks, currentSchema, new Set(), () => {});
+  }
+};
+
 // Centralized mapping between block types and their generated GraphQL type names
 const getBlockTypeNames = (block: BlockInfo): string[] => {
   const typeName = toCamelCase(block.title);
@@ -318,29 +410,32 @@ export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [schemaRenameNotification]);
 
-  // Function to sync schema with provided blocks
+  // Function to sync schema with blocks using enhanced nodeId-based logic
   const syncSchemaWithBlocks = useCallback((blocks: BlockInfo[]) => {
-    console.log('[DEBUG] syncSchemaWithBlocks called with', blocks.length, 'blocks');
+    console.log('[DEBUG] ===== syncSchemaWithBlocks called =====');
+    console.log('[DEBUG] Current blocks:', blocks);
+    console.log('[DEBUG] Current schema code length:', schema.code.length);
     
-    if (blocks.length === 0) {
-      console.log('[DEBUG] No blocks to sync');
-      return;
+    // Try enhanced nodeId-based sync first
+    let updatedSchemaCode: string;
+    try {
+      updatedSchemaCode = syncBlocksWithSchemaUsingNodeId(blocks, schema.code);
+      console.log('[DEBUG] Successfully used nodeId-based sync');
+    } catch (error) {
+      console.warn('[DEBUG] NodeId-based sync failed, falling back to name-based sync:', error);
+      updatedSchemaCode = syncBlocksWithSchema(blocks, schema.code, processedBlocks, setProcessedBlocks);
     }
     
-    const updatedSchema = syncBlocksWithSchema(blocks, schema.code, processedBlocks, setProcessedBlocks);
-    
-    if (updatedSchema !== schema.code) {
-      console.log('[DEBUG] Schema updated by sync, updating state');
-      setSchema(prev => ({
-        ...prev,
-        code: updatedSchema,
-        source: 'outside'
-      }));
+    if (updatedSchemaCode !== schema.code) {
+      console.log('[DEBUG] Schema updated, setting new schema');
+      updateSchema({
+        ...schema,
+        code: updatedSchemaCode
+      });
     } else {
-      console.log('[DEBUG] No schema changes needed');
+      console.log('[DEBUG] Schema unchanged, no update needed');
     }
-  }, [schema.code, processedBlocks]);
-
+  }, [schema, processedBlocks, updateSchema]);
 
   // Function to get the schema AST
   const getSchemaAST = useCallback(() => {
