@@ -1,32 +1,37 @@
 import { useCallback } from 'react';
 import { useSchemaState } from '../state/schemaState';
 import { PassedSchema } from 'graphql-editor';
+import type { BlockInfo } from '../types/schema';
 
 /**
  * Custom hook for handling schema import and export functionality
  * This hook provides functions to integrate with the existing import/export flow
  */
 export const useSchemaImportExport = () => {
-  const { schema, blockRegistry, updateSchema, registerBlock } = useSchemaState();
+  const { schema, updateSchema, syncSchemaWithBlocks } = useSchemaState();
 
   /**
    * Adds schema data to the export object
    * @param exportData The export data object
+   * @param blocks Current blocks from React Flow nodes
    * @returns Updated export data with schema information
    */
-  const addSchemaToExport = useCallback((exportData: any) => {
+  const addSchemaToExport = useCallback((exportData: any, blocks: BlockInfo[]) => {
     return {
       ...exportData,
       schema,
-      blockRegistry
+      blocks
     };
-  }, [schema, blockRegistry]);
+  }, [schema]);
 
   /**
    * Imports schema data from imported data
    * @param importedData The imported data containing schema information
+   * @returns Imported blocks if any exist
    */
-  const importSchemaFromData = useCallback((importedData: any) => {
+  const importSchemaFromData = useCallback((importedData: any): BlockInfo[] => {
+    const importedBlocks: BlockInfo[] = [];
+    
     // Import schema data if it exists (support both old 'schemaData' and new 'schema' formats)
     const schemaToImport = importedData.schema || importedData.schemaData;
     if (schemaToImport) {
@@ -39,20 +44,31 @@ export const useSchemaImportExport = () => {
       updateSchema(typedSchema);
     }
     
-    // Import block registry if it exists
+    // Import blocks if they exist (new format)
+    if (importedData.blocks && Array.isArray(importedData.blocks)) {
+      importedData.blocks.forEach((block: any) => {
+        if (block.id && block.title && block.type) {
+          const typedBlock: BlockInfo = {
+            id: block.id,
+            title: block.title,
+            type: block.type as 'command' | 'event' | 'view'
+          };
+          importedBlocks.push(typedBlock);
+        }
+      });
+    }
+    
+    // Import legacy block registry if it exists
     if (importedData.blockRegistry && Array.isArray(importedData.blockRegistry)) {
-      // Clear existing registry by recreating it
-      const newRegistry = [...importedData.blockRegistry]
-        .filter(block => block.id && block.title && block.type)
-        .map(block => ({
-          id: block.id,
-          title: block.title,
-          type: block.type as 'command' | 'event' | 'view'
-        }));
-      
-      // Register all blocks in the registry
-      newRegistry.forEach(block => {
-        registerBlock(block);
+      importedData.blockRegistry.forEach((block: any) => {
+        if (block.id && block.title && block.type) {
+          const typedBlock: BlockInfo = {
+            id: block.id,
+            title: block.title,
+            type: block.type as 'command' | 'event' | 'view'
+          };
+          importedBlocks.push(typedBlock);
+        }
       });
     }
     
@@ -61,7 +77,7 @@ export const useSchemaImportExport = () => {
       let combinedCode = '';
       
       // Extract all schemas and combine them
-      Object.entries(importedData.schemas).forEach(([blockId, schemaData]: [string, any]) => {
+      Object.entries(importedData.schemas).forEach(([_, schemaData]: [string, any]) => {
         if (typeof schemaData?.code === 'string' && schemaData.code.trim()) {
           combinedCode += `\n\n${schemaData.code}`;
         }
@@ -76,7 +92,14 @@ export const useSchemaImportExport = () => {
         updateSchema(typedSchema);
       }
     }
-  }, [updateSchema, registerBlock]);
+    
+    // Sync schema with imported blocks if any exist
+    if (importedBlocks.length > 0) {
+      syncSchemaWithBlocks(importedBlocks);
+    }
+    
+    return importedBlocks;
+  }, [updateSchema, syncSchemaWithBlocks]);
 
   return {
     addSchemaToExport,

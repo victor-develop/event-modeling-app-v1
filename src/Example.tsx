@@ -11,7 +11,7 @@ export const Example = () => {
   const [mySchema, setMySchema] = useState<PassedSchema>({ 
     code: defaultSchema,
     libraries: '',
-    source: 'code',
+    source: 'outside',
   });
 
   return (

@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useState } from 'react';
 import { PassedSchema } from 'graphql-editor';
 import { BlockInfo } from '../types/schema';
 import { parseSchema, findTypeNames } from '../utils/schemaPreservation';
@@ -7,12 +7,10 @@ import { toCamelCase } from '../utils/stringUtils';
 // Define the schema state interface
 interface SchemaState {
   schema: PassedSchema;
-  blockRegistry: BlockInfo[];
   schemaRenameNotification: string | null;
   updateSchema: (data: PassedSchema) => void;
-  registerBlock: (block: BlockInfo) => void;
-  unregisterBlock: (blockId: string) => void;
-  generateSchema: () => string;
+  syncSchemaWithBlocks: (blocks: BlockInfo[]) => void;
+  generateSchema: (blocks: BlockInfo[]) => string;
   getSchemaAST: () => ReturnType<typeof parseSchema>;
 }
 
@@ -304,173 +302,69 @@ const syncBlocksWithSchema = (blocks: BlockInfo[], currentSchema: string, proces
 };
 
 
-interface SchemaProviderProps {
-  initialBlockRegistry?: BlockInfo[];
-  children: React.ReactNode;
-}
 
-export const SchemaProvider: React.FC<SchemaProviderProps> = ({ 
-  children, 
-  initialBlockRegistry = [] 
-}) => {
+export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [schema, setSchema] = useState<PassedSchema>(defaultSchema);
-  const [blockRegistry, setBlockRegistry] = useState<BlockInfo[]>(initialBlockRegistry);
   const [schemaRenameNotification, setSchemaRenameNotification] = useState<string | null>(null);
   const [processedBlocks, setProcessedBlocks] = useState<Set<string>>(new Set());
-  
-  // Sync blocks with schema when blocks are registered (idempotent)
-  useEffect(() => {
-    console.log(`[DEBUG] ===== useEffect triggered =====`);
-    console.log(`[DEBUG] Block registry length:`, blockRegistry.length);
-    console.log(`[DEBUG] Block registry:`, blockRegistry);
-    console.log(`[DEBUG] Current schema.code length:`, schema.code.length);
-    
-    if (blockRegistry.length > 0) {
-      console.log(`[DEBUG] Calling syncBlocksWithSchema...`);
-      const updatedSchema = syncBlocksWithSchema(blockRegistry, schema.code, processedBlocks, setProcessedBlocks);
-      console.log(`[DEBUG] syncBlocksWithSchema returned schema length:`, updatedSchema.length);
-      console.log(`[DEBUG] Schema changed:`, updatedSchema !== schema.code);
-      
-      if (updatedSchema !== schema.code) {
-        console.log('[DEBUG] 🔄 Schema updated due to block registry changes');
-        console.log('[DEBUG] Old schema:', schema.code);
-        console.log('[DEBUG] New schema:', updatedSchema);
-        setSchema(prev => ({ ...prev, code: updatedSchema, source: 'outside' }));
-      } else {
-        console.log('[DEBUG] ✅ Schema unchanged, no update needed');
-      }
-    } else {
-      console.log('[DEBUG] No blocks in registry, skipping sync');
-    }
-  }, [blockRegistry, schema.code]);
-  
-  // Parse schema to AST for type name lookups
-  const getSchemaAST = useCallback(() => {
-    try {
-      return parseSchema(schema.code);
-    } catch (error) {
-      console.error('Error parsing schema:', error);
-      return null;
-    }
-  }, [schema.code]);
-  
-  // Update schema with change source tracking
+
+  // Function to update the schema
   const updateSchema = useCallback((data: PassedSchema) => {
-    console.log('[DEBUG] Updating schema with source:', data.source);
-    console.log('[DEBUG] Previous schema code:', schema.code);
-    console.log('[DEBUG] New schema code:', data.code);
-    console.log('[DEBUG] Are they equal?', schema.code === data.code);
-    
-    // Always set schema data first
+    console.log('[DEBUG] updateSchema called with source:', data.source);
     setSchema(data);
     
-    // If this is a schema editor update, check for type name changes
-    if (data.source === 'code' && schema.code !== data.code) {
-      try {
-        const prevAst = parseSchema(schema.code);
-        const newAst = parseSchema(data.code);
-        
-        console.log('[DEBUG] Parsed ASTs:', { prevAst: !!prevAst, newAst: !!newAst });
-        
-        if (prevAst && newAst) {
-          // Find type names in previous and new schema
-          const prevTypeNames = findTypeNames(prevAst);
-          const newTypeNames = findTypeNames(newAst);
-          
-          console.log('[DEBUG] Schema type names:', { prevTypeNames, newTypeNames });
-          
-          // Check for renamed types
-          const removedTypes = prevTypeNames.filter(t => !newTypeNames.includes(t));
-          const addedTypes = newTypeNames.filter(t => !prevTypeNames.includes(t));
-          
-          console.log('[DEBUG] Type changes:', { removedTypes, addedTypes });
-          
-          // If types were removed and added, show notification
-          if (removedTypes.length > 0 && addedTypes.length > 0) {
-            // Find block types that might have been renamed
-            const potentiallyRenamedBlocks = blockRegistry.filter(block => {
-              const typeName = toCamelCase(block.title);
-              return removedTypes.includes(typeName);
-            });
-            
-            console.log('[DEBUG] Potentially renamed blocks:', potentiallyRenamedBlocks);
-            
-            if (potentiallyRenamedBlocks.length > 0) {
-              const blockTitles = potentiallyRenamedBlocks.map(b => b.title).join(', ');
-              const notification = `Type name change detected: ${removedTypes.join(', ')} may have been renamed to ${addedTypes.join(', ')}. Block titles for ${blockTitles} were not updated.`;
-              
-              console.log('[DEBUG] Schema rename notification:', notification);
-              setSchemaRenameNotification(notification);
-              
-              // Clear notification after 5 seconds
-              setTimeout(() => {
-                setSchemaRenameNotification(null);
-              }, 5000);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('[DEBUG] Error parsing schema:', error);
-      }
-    } else {
-      console.log('[DEBUG] Not checking for type changes:', { 
-        isCodeEditor: data.source === 'code', 
-        codeChanged: schema.code !== data.code 
-      });
+    // Clear rename notification when schema is updated
+    if (schemaRenameNotification) {
+      setSchemaRenameNotification(null);
     }
-  }, [blockRegistry, schema.code]);
-  
-  // Register a block in the registry (idempotent)
-  const registerBlock = useCallback((block: BlockInfo) => {
-    console.log('[DEBUG] Registering block:', block);
-    setBlockRegistry(prev => {
-      // Check if block already exists
-      const exists = prev.some(b => b.id === block.id);
-      if (exists) {
-        console.log('[DEBUG] Block already exists, updating:', block.id);
-        // Update existing block
-        return prev.map(b => b.id === block.id ? block : b);
-      }
-      console.log('[DEBUG] Adding new block to registry:', block.id);
-      // Add new block - schema sync will happen in useEffect
-      return [...prev, block];
-    });
-  }, []);
-  
-  // Remove a block from the registry
-  const unregisterBlock = useCallback((blockId: string) => {
-    setBlockRegistry(prev => prev.filter(b => b.id !== blockId));
-  }, []);
-  
+  }, [schemaRenameNotification]);
 
-// Generate a unified schema from the block registry (for export/compatibility)
-const generateSchema = useCallback(() => {
-  return syncBlocksWithSchema(blockRegistry, schema.code, processedBlocks, setProcessedBlocks);
-}, [blockRegistry, schema.code, processedBlocks]);
+  // Function to sync schema with provided blocks
+  const syncSchemaWithBlocks = useCallback((blocks: BlockInfo[]) => {
+    console.log('[DEBUG] syncSchemaWithBlocks called with', blocks.length, 'blocks');
+    
+    if (blocks.length === 0) {
+      console.log('[DEBUG] No blocks to sync');
+      return;
+    }
+    
+    const updatedSchema = syncBlocksWithSchema(blocks, schema.code, processedBlocks, setProcessedBlocks);
+    
+    if (updatedSchema !== schema.code) {
+      console.log('[DEBUG] Schema updated by sync, updating state');
+      setSchema(prev => ({
+        ...prev,
+        code: updatedSchema,
+        source: 'outside'
+      }));
+    } else {
+      console.log('[DEBUG] No schema changes needed');
+    }
+  }, [schema.code, processedBlocks]);
 
-// Create the context value
-const contextValue = {
-  schema,
-  blockRegistry,
-  schemaRenameNotification,
-  updateSchema,
-  registerBlock,
-  unregisterBlock,
-  generateSchema,
-  getSchemaAST
-};
+  // Function to generate the complete schema with provided blocks
+  const generateSchema = useCallback((blocks: BlockInfo[]) => {
+    console.log('[DEBUG] generateSchema called with', blocks.length, 'blocks');
+    return syncBlocksWithSchema(blocks, schema.code, processedBlocks, setProcessedBlocks);
+  }, [schema.code, processedBlocks]);
 
-// Set the schema state for external access
-useEffect(() => {
-  setSchemaState(contextValue);
-}, [contextValue]);
+  // Function to get the schema AST
+  const getSchemaAST = useCallback(() => {
+    return parseSchema(schema.code);
+  }, [schema.code]);
 
-// Return the context provider with all values and functions
-return (
-  <SchemaContext.Provider value={contextValue}>
-    {children}
-  </SchemaContext.Provider>
-);
+  return (
+    <SchemaContext.Provider value={{
+      schema,
+      schemaRenameNotification,
+      updateSchema,
+      syncSchemaWithBlocks,
+      generateSchema,
+      getSchemaAST,
+    }}>
+      {children}
+    </SchemaContext.Provider>
+  );
 };
 
 // Hook to use schema state within components
@@ -482,13 +376,3 @@ export const useSchemaState = () => {
   return context;
 };
 
-// For external access without hooks
-let currentSchemaState: SchemaState | null = null;
-
-export const setSchemaState = (state: SchemaState) => {
-  currentSchemaState = state;
-};
-
-export const getSchemaState = (): SchemaState | null => {
-  return currentSchemaState;
-};

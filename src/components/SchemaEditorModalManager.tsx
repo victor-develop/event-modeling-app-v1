@@ -23,7 +23,12 @@ export const useSchemaModal = () => {
   return context;
 };
 
-export const SchemaModalProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
+interface SchemaModalProviderProps {
+  children: React.ReactNode;
+  currentNodes: any[]; // React Flow nodes from the current state
+}
+
+export const SchemaModalProvider: React.FC<SchemaModalProviderProps> = ({ children, currentNodes }) => {
   const [modalState, setModalState] = useState<SchemaModalState>({
     isOpen: false,
     blockId: '',
@@ -57,6 +62,7 @@ export const SchemaModalProvider: React.FC<React.PropsWithChildren<{}>> = ({ chi
         blockType={modalState.blockType}
         isOpen={modalState.isOpen}
         onClose={closeSchemaEditor}
+        currentNodes={currentNodes}
       />
     </SchemaModalContext.Provider>
   );

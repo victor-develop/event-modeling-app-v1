@@ -201,9 +201,7 @@ const updateNodeProperty = <T>(
   };
 };
 
-const handleUpdateNodeLabel = (payload: { nodeId: string; label: string }, state: CanvasState): CanvasState => {
-  console.log('[DEBUG] handleUpdateNodeLabel called with:', payload);
-  
+const handleUpdateNodeLabel = (payload: { nodeId: string; label: string }, state: CanvasState): CanvasState => {  
   // Update the node property in the state - that's all we need to do
   // Components will handle schema registration via their own useEffect hooks
   return updateNodeProperty(payload.nodeId, ['data', 'label'], payload.label, state);

@@ -1,7 +1,7 @@
 import React, { useCallback, useReducer, useState, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ToastProvider, useToast } from './context/ToastContext';
-import { SchemaProvider, getSchemaState } from './state/schemaState';
+import { SchemaProvider, useSchemaState } from './state/schemaState';
 import { SchemaModalProvider } from './components/SchemaEditorModalManager';
 import { Example } from './Example';
 import {
@@ -45,6 +45,7 @@ const nodeClassName = (node: any): string => node.type;
 // AppContent component contains the main application logic
 const AppContent = () => {
   const { showToast } = useToast();
+  const { schema, updateSchema, syncSchemaWithBlocks } = useSchemaState();
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [selectedSwimlaneId, setSelectedSwimlaneId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -645,9 +646,14 @@ const dispatchRemoveNode = useCallback(
   
   // Export events to JSON
   const onExportEvents = useCallback(() => {
-    const schemaState = getSchemaState();
-    if (!schemaState) return;
-    const { schema, blockRegistry } = schemaState;
+    // Convert current nodes to blocks for export
+    const blocks = nodes
+      .filter(node => node.data?.label && ['command', 'event', 'view'].includes(node.type))
+      .map(node => ({
+        id: node.id,
+        title: node.data.label,
+        type: node.type as 'command' | 'event' | 'view'
+      }));
     
     const modelState = {
       nodes,
@@ -655,7 +661,7 @@ const dispatchRemoveNode = useCallback(
       events,
       currentEventIndex,
       schema,
-      blockRegistry
+      blocks
     };
     
     const dataStr = JSON.stringify(modelState, null, 2);
@@ -683,9 +689,6 @@ const dispatchRemoveNode = useCallback(
         try {
           const content = e.target?.result as string;
           const parsedContent = JSON.parse(content);
-          const schemaState = getSchemaState();
-          if (!schemaState) return;
-          const { updateSchema, registerBlock } = schemaState;
           
           // Check if this is a legacy format (just events array)
           if (Array.isArray(parsedContent)) {
@@ -716,17 +719,20 @@ const dispatchRemoveNode = useCallback(
               updateSchema(typedSchemaData);
             }
             
-            // Import block registry if it exists
-            if (parsedContent.blockRegistry && Array.isArray(parsedContent.blockRegistry)) {
-              parsedContent.blockRegistry.forEach((block: any) => {
-                if (block.id && block.title && block.type) {
-                  registerBlock({
-                    id: block.id,
-                    title: block.title,
-                    type: block.type
-                  });
-                }
-              });
+            // Import blocks if they exist (new format or legacy blockRegistry)
+            const blocksToImport = parsedContent.blocks || parsedContent.blockRegistry;
+            if (blocksToImport && Array.isArray(blocksToImport)) {
+              const blocks = blocksToImport
+                .filter((block: any) => block.id && block.title && block.type)
+                .map((block: any) => ({
+                  id: block.id,
+                  title: block.title,
+                  type: block.type as 'command' | 'event' | 'view'
+                }));
+              
+              if (blocks.length > 0) {
+                syncSchemaWithBlocks(blocks);
+              }
             }
             
             // Handle legacy schema format (per-block schemas)
@@ -1020,7 +1026,7 @@ const App = () => {
   return (
     <ToastProvider>
       <SchemaProvider>
-        <SchemaModalProvider>
+        <SchemaModalProvider currentNodes={[]}>
           <Router>
             <Routes>
               <Route path="/" element={<AppContent />} />

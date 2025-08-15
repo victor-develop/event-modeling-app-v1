@@ -1,34 +1,34 @@
-import { getSchemaState } from '../state/schemaState';
 import { PassedSchema } from 'graphql-editor';
 import type { BlockInfo } from '../types/schema';
 
 /**
- * Exports the current schema data and block registry to the provided export data object
+ * Exports the current schema data and blocks to the provided export data object
  * @param exportData The export data object to add schema information to
+ * @param schema Current schema state
+ * @param blocks Current blocks from React Flow nodes
  * @returns The updated export data with schema information
  */
-export const addSchemaToExport = (exportData: any) => {
-  const state = getSchemaState();
-  if (!state) return exportData;
-
-  const { schema, blockRegistry } = state;
-  
+export const addSchemaToExport = (exportData: any, schema: PassedSchema, blocks: BlockInfo[]) => {
   return {
     ...exportData,
     schema,
-    blockRegistry
+    blocks
   };
 };
 
 /**
- * Imports schema data and block registry from imported data
+ * Imports schema data from imported data
  * @param importedData The imported data containing schema information
+ * @param updateSchema Function to update the schema state
+ * @param syncSchemaWithBlocks Function to sync schema with blocks
+ * @returns Imported blocks if any exist
  */
-export const importSchemaFromData = (importedData: any) => {
-  const state = getSchemaState();
-  if (!state) return;
-
-  const { updateSchema, registerBlock } = state;
+export const importSchemaFromData = (
+  importedData: any, 
+  updateSchema: (schema: PassedSchema) => void,
+  syncSchemaWithBlocks: (blocks: BlockInfo[]) => void
+): BlockInfo[] => {
+  const importedBlocks: BlockInfo[] = [];
   
   // Import schema data if it exists (support both old 'schemaData' and new 'schema' formats)
   const schemaToImport = importedData.schema || importedData.schemaData;
@@ -42,9 +42,22 @@ export const importSchemaFromData = (importedData: any) => {
     updateSchema(typedSchema);
   }
   
-  // Import block registry if it exists
+  // Import blocks if they exist (new format)
+  if (importedData.blocks && Array.isArray(importedData.blocks)) {
+    importedData.blocks.forEach((block: any) => {
+      if (block.id && block.title && block.type) {
+        const typedBlock: BlockInfo = {
+          id: block.id,
+          title: block.title,
+          type: block.type as 'command' | 'event' | 'view'
+        };
+        importedBlocks.push(typedBlock);
+      }
+    });
+  }
+  
+  // Import legacy block registry if it exists
   if (importedData.blockRegistry && Array.isArray(importedData.blockRegistry)) {
-    // Register all blocks in the registry
     importedData.blockRegistry.forEach((block: any) => {
       if (block.id && block.title && block.type) {
         const typedBlock: BlockInfo = {
@@ -52,7 +65,7 @@ export const importSchemaFromData = (importedData: any) => {
           title: block.title,
           type: block.type as 'command' | 'event' | 'view'
         };
-        registerBlock(typedBlock);
+        importedBlocks.push(typedBlock);
       }
     });
   }
@@ -78,4 +91,11 @@ export const importSchemaFromData = (importedData: any) => {
       updateSchema(typedSchema);
     }
   }
+  
+  // Sync schema with imported blocks if any exist
+  if (importedBlocks.length > 0) {
+    syncSchemaWithBlocks(importedBlocks);
+  }
+  
+  return importedBlocks;
 };

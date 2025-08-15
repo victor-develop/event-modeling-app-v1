@@ -4,6 +4,18 @@ import type { ExternalEditorAPI, PassedSchema } from 'graphql-editor';
 import { useSchemaState } from '../state/schemaState';
 import { findTypeNames, parseSchema } from '../utils/schemaPreservation';
 import { toCamelCase } from '../utils/stringUtils';
+import { BlockInfo } from '../types/schema';
+
+// Utility function to convert React Flow nodes to BlockInfo
+const convertNodesToBlocks = (nodes: any[]): BlockInfo[] => {
+  return nodes
+    .filter(node => node.data?.label && ['command', 'event', 'view'].includes(node.type))
+    .map(node => ({
+      id: node.id,
+      title: node.data.label,
+      type: node.type as 'command' | 'event' | 'view'
+    }));
+};
 
 interface SchemaEditorModalProps {
   blockId: string;
@@ -11,6 +23,7 @@ interface SchemaEditorModalProps {
   blockType: 'command' | 'event' | 'view';
   isOpen: boolean;
   onClose: () => void;
+  currentNodes: any[]; // React Flow nodes from the current state
 }
 
 export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
@@ -19,8 +32,9 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
   blockType,
   isOpen,
   onClose,
+  currentNodes,
 }) => {
-  const { schema, updateSchema, registerBlock } = useSchemaState();
+  const { schema, updateSchema, syncSchemaWithBlocks } = useSchemaState();
   const editorRef = useRef<ExternalEditorAPI>(null);
   
   // Log when modal opens
@@ -49,16 +63,14 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
     }
   }, [isOpen, blockId, blockTitle, blockType, schema.code]);
   
-  // Register this block when the component mounts or block details change
+  // Sync schema with current blocks when the modal opens or nodes change
   useEffect(() => {
-    if (blockId && blockTitle) {
-      registerBlock({
-        id: blockId,
-        title: blockTitle,
-        type: blockType
-      });
+    if (isOpen && currentNodes.length > 0) {
+      const blocks = convertNodesToBlocks(currentNodes);
+      console.log('[DEBUG-MODAL] Syncing schema with current blocks:', blocks);
+      syncSchemaWithBlocks(blocks);
     }
-  }, [blockId, blockTitle, blockType, registerBlock]);
+  }, [isOpen, currentNodes, syncSchemaWithBlocks]);
 
   // Focus on the current block type when the editor opens
   useEffect(() => {
@@ -161,11 +173,7 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
             }}
             setSchema={(newSchema: PassedSchema) => {
               // Update schema with source tracking to prevent infinite loops
-              updateSchema({
-                code: newSchema.code,
-                libraries: newSchema.libraries || '',
-                source: 'code' as const,
-              });
+              updateSchema(newSchema);
             }}
             path="schema.graphql"
             title="Event Modeling Schema"

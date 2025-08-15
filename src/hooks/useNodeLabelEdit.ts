@@ -34,7 +34,6 @@ export const useNodeLabelEdit = ({
   // Only update local label state when initialLabel changes from outside
   // This prevents overriding our local edits when we're updating the label
   useEffect(() => {
-    console.log(`${nodeType} useEffect initialLabel changed`, { initialLabel, currentLabel: label });
     setLabel(initialLabel);
   }, [initialLabel, nodeType]);
 
@@ -47,9 +46,7 @@ export const useNodeLabelEdit = ({
 
   // Handle input change
   const handleLabelChange = useCallback((evt: React.ChangeEvent<HTMLInputElement>) => {
-    console.log(`${nodeType} handleLabelChange BEFORE`, { id, currentLabel: label, newValue: evt.target.value });
     setLabel(evt.target.value);
-    console.log(`${nodeType} handleLabelChange AFTER`, { id, updatedLabel: evt.target.value });
   }, [id, label, nodeType]);
 
   // Handle double click to start editing
@@ -59,21 +56,16 @@ export const useNodeLabelEdit = ({
 
   // Handle blur to save changes
   const handleBlur = useCallback(() => {
-    console.log(`${nodeType} handleBlur BEFORE`, { id, label, initialLabel, isEditing });
     setIsEditing(false);
     // Always update the label when editing is complete
-    console.log(`${nodeType} calling onLabelChange on blur`, { id, label });
     onLabelChange(id, label);
-    console.log(`${nodeType} handleBlur AFTER`, { id, label, initialLabel });
   }, [id, label, initialLabel, onLabelChange, isEditing, nodeType]);
 
   // Handle Enter key to save changes
   const handleKeyDown = useCallback((evt: React.KeyboardEvent<HTMLInputElement>) => {
     if (evt.key === 'Enter') {
-      console.log(`${nodeType} handleKeyDown Enter BEFORE`, { id, label, initialLabel, isEditing });
       setIsEditing(false);
       // Always update the label when pressing Enter
-      console.log(`${nodeType} calling onLabelChange on Enter`, { id, label });
       onLabelChange(id, label);
       console.log(`${nodeType} handleKeyDown Enter AFTER`, { id, label, initialLabel });
     }
