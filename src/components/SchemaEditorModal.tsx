@@ -101,7 +101,6 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
         right: 0,
         bottom: 0,
         backgroundColor: 'rgba(0, 0, 0, 0.85)',
-        zIndex: 9999, // Ensure it's above everything else
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
@@ -118,7 +117,7 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
           height: '95%',
           backgroundColor: '#fff',
           borderRadius: '8px',
-          overflow: 'hidden',
+          overflow: 'visible',
           display: 'flex',
           flexDirection: 'column',
           boxShadow: '0 5px 15px rgba(0,0,0,0.5)',
@@ -154,7 +153,10 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
             </button>
           </div>
         </div>
-        <div style={{ flex: 1 }}>
+        <div style={{ 
+          flex: 1, 
+          overflow: 'visible'
+        }}>
           {/* Debug schema before passing to editor */}
           {(() => {
             console.log('[DEBUG-EDITOR] Schema being passed to GraphQL Editor:');
@@ -164,20 +166,22 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
             console.log('[DEBUG-EDITOR] Is empty?', !schema.code.trim());
             return null;
           })()}
-          <GraphQLEditor
-            ref={editorRef}
-            schema={{
-              code: schema.code,
-              libraries: schema.libraries || '',
-              source: 'outside' as const,
-            }}
-            setSchema={(newSchema: PassedSchema) => {
-              // Update schema with source tracking to prevent infinite loops
-              updateSchema(newSchema);
-            }}
-            path="schema.graphql"
-            title="Event Modeling Schema"
-          />
+          <div style={{ height: '100%', overflow: 'visible' }}>
+            <GraphQLEditor
+              ref={editorRef}
+              schema={{
+                code: schema.code,
+                libraries: schema.libraries || '',
+                source: 'outside' as const,
+              }}
+              setSchema={(newSchema: PassedSchema) => {
+                // Update schema with source tracking to prevent infinite loops
+                updateSchema(newSchema);
+              }}
+              path="schema.graphql"
+              title="Event Modeling Schema"
+            />
+          </div>
         </div>
       </div>
     </div>
