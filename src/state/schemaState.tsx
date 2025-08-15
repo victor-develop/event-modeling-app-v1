@@ -10,7 +10,6 @@ interface SchemaState {
   schemaRenameNotification: string | null;
   updateSchema: (data: PassedSchema) => void;
   syncSchemaWithBlocks: (blocks: BlockInfo[]) => void;
-  generateSchema: (blocks: BlockInfo[]) => string;
   getSchemaAST: () => ReturnType<typeof parseSchema>;
 }
 
@@ -342,11 +341,6 @@ export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [schema.code, processedBlocks]);
 
-  // Function to generate the complete schema with provided blocks
-  const generateSchema = useCallback((blocks: BlockInfo[]) => {
-    console.log('[DEBUG] generateSchema called with', blocks.length, 'blocks');
-    return syncBlocksWithSchema(blocks, schema.code, processedBlocks, setProcessedBlocks);
-  }, [schema.code, processedBlocks]);
 
   // Function to get the schema AST
   const getSchemaAST = useCallback(() => {
@@ -359,7 +353,6 @@ export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       schemaRenameNotification,
       updateSchema,
       syncSchemaWithBlocks,
-      generateSchema,
       getSchemaAST,
     }}>
       {children}

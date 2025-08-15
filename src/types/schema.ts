@@ -1,7 +1,6 @@
 /**
  * Type definitions for schema-related functionality
  */
-import type { DocumentNode } from 'graphql';
 
 /**
  * Source of a schema change to track bidirectional updates
@@ -45,16 +44,5 @@ export interface TypeNameUpdate {
 }
 
 /**
- * Schema state with change tracking
+ * Schema state interface (currently using simple schemaState.tsx implementation)
  */
-export interface SchemaState {
-  schemaData: SchemaData;
-  blockRegistry: BlockInfo[];
-  changeSource: SchemaChangeSource;
-  updateSchema: (data: SchemaData, source: SchemaChangeSource) => void;
-  registerBlock: (block: BlockInfo) => void;
-  unregisterBlock: (blockId: string) => void;
-  updateBlockTitle: (blockId: string, newTitle: string) => void;
-  generateSchema: () => string;
-  getSchemaAST: () => DocumentNode | null;
-}
