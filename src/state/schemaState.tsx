@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { PassedSchema } from 'graphql-editor';
-import type { BlockInfo, TypeNameUpdate } from '../types/schema';
-import { parseSchema, findTypeNames, updateSchemaTypeNames } from '../utils/schemaPreservation';
+import { BlockInfo } from '../types/schema';
+import { parseSchema, findTypeNames } from '../utils/schemaPreservation';
 import { toCamelCase } from '../utils/stringUtils';
 
 // Define the schema state interface
@@ -12,7 +12,6 @@ interface SchemaState {
   updateSchema: (data: PassedSchema) => void;
   registerBlock: (block: BlockInfo) => void;
   unregisterBlock: (blockId: string) => void;
-  updateBlockTitle: (blockId: string, newTitle: string) => void;
   generateSchema: () => string;
   getSchemaAST: () => ReturnType<typeof parseSchema>;
 }
@@ -443,98 +442,6 @@ export const SchemaProvider: React.FC<SchemaProviderProps> = ({
     setBlockRegistry(prev => prev.filter(b => b.id !== blockId));
   }, []);
   
-  // Update a block title with schema synchronization
-  const updateBlockTitle = useCallback((blockId: string, newTitle: string) => {
-    console.log('[DEBUG] Updating block title:', blockId, newTitle, 'schema.source:', schema.source);
-    console.log('[DEBUG] Current schema:', schema);
-    
-    // Only proceed if change didn't originate from code editor
-    if (schema.source === 'code') {
-      console.log('[DEBUG] Skipping block title update as change came from code editor');
-      return;
-    }
-    
-    // Find the block to update
-    setBlockRegistry(prev => {
-      console.log('[DEBUG] Current block registry:', prev);
-      const blockToUpdate = prev.find(b => b.id === blockId);
-      if (!blockToUpdate) {
-        console.log('[DEBUG] Block not found:', blockId);
-        return prev;
-      }
-      
-      const oldTitle = blockToUpdate.title;
-      const oldTypeName = toCamelCase(oldTitle);
-      const newTypeName = toCamelCase(newTitle);
-      
-      console.log('[DEBUG] Type names:', { oldTypeName, newTypeName });
-      
-      // If the type name hasn't changed, just update the block title
-      if (oldTypeName === newTypeName) {
-        console.log('[DEBUG] Type name unchanged, just updating block title');
-        return prev.map(b => b.id === blockId ? { ...b, title: newTitle } : b);
-      }
-      
-      // Update the block title
-      const updatedRegistry = prev.map(b => 
-        b.id === blockId ? { ...b, title: newTitle } : b
-      );
-      console.log('[DEBUG] Updated registry:', updatedRegistry);
-      
-      // Update the schema with the new type name
-      const ast = getSchemaAST();
-      console.log('[DEBUG] Got schema AST:', !!ast);
-      if (ast) {
-        // Check if the old type exists in the schema
-        const typeNames = findTypeNames(ast);
-        console.log('[DEBUG] Found type names in schema:', typeNames);
-        const oldTypeExists = typeNames.includes(oldTypeName);
-        
-        const updates: TypeNameUpdate[] = [{
-          oldName: oldTypeName,
-          newName: newTypeName,
-          blockType: blockToUpdate.type,
-          recreateIfMissing: !oldTypeExists // Recreate if the old type doesn't exist
-        }];
-        
-        // For commands, also update the input type
-        if (blockToUpdate.type === 'command') {
-          const oldInputExists = typeNames.includes(`${oldTypeName}Input`);
-          
-          updates.push(
-            { 
-              oldName: `${oldTypeName}Input`, 
-              newName: `${newTypeName}Input`, 
-              blockType: 'command',
-              recreateIfMissing: !oldInputExists
-            }
-          );
-        }
-        
-        console.log('[DEBUG] Updating schema type names:', updates, 'oldTypeExists:', oldTypeExists);
-        
-        // Preserve fields while updating type names
-        const result = updateSchemaTypeNames(schema.code, updates);
-        console.log('[DEBUG] Schema update result:', result);
-        if (result.success) {
-          console.log('[DEBUG] Schema update successful. New schema:');
-          console.log(result.schema);
-          // Update schema with the new code immediately
-          updateSchema({
-            ...schema,
-            code: result.schema,
-            source: 'tree'
-          });
-        } else {
-          console.error('[DEBUG] Failed to update schema type names');
-        }
-      } else {
-        console.error('[DEBUG] Failed to parse schema AST');
-      }
-      
-      return updatedRegistry;
-    });
-  }, [schema.source, schema.code, getSchemaAST, updateSchema]);
 
 // Generate a unified schema from the block registry (for export/compatibility)
 const generateSchema = useCallback(() => {
@@ -549,7 +456,6 @@ const contextValue = {
   updateSchema,
   registerBlock,
   unregisterBlock,
-  updateBlockTitle,
   generateSchema,
   getSchemaAST
 };

@@ -225,12 +225,17 @@ const handleUpdateNodeLabel = (payload: { nodeId: string; label: string }, state
           const schemaState = getSchemaState();
           console.log('[DEBUG] Got schema state:', schemaState ? 'yes' : 'no');
           
-          if (schemaState && typeof schemaState.updateBlockTitle === 'function') {
-            console.log('[DEBUG] Triggering schema update for node:', updatedNode.id, payload.label);
-            schemaState.updateBlockTitle(updatedNode.id, payload.label);
+          if (schemaState && typeof schemaState.registerBlock === 'function') {
+            console.log('[DEBUG] Updating block registry for node:', updatedNode.id, payload.label);
+            // Re-register the block with new title - useEffect will handle schema sync
+            schemaState.registerBlock({
+              id: updatedNode.id,
+              title: payload.label,
+              type: updatedNode.data.blockType
+            });
           } else {
-            console.error('[DEBUG] Schema state or updateBlockTitle not available:', 
-              schemaState ? `Has updateBlockTitle: ${typeof schemaState.updateBlockTitle}` : 'No schema state');
+            console.error('[DEBUG] Schema state or registerBlock not available:', 
+              schemaState ? `Has registerBlock: ${typeof schemaState.registerBlock}` : 'No schema state');
           }
         } catch (innerError) {
           console.error('[DEBUG] Error in schema update timeout:', innerError);
