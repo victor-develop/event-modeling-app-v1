@@ -9,46 +9,53 @@ const TsConfigPathsPlugin = require('tsconfig-paths-webpack-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const ReactRefreshWebpackPlugin = require('@pmmmwh/react-refresh-webpack-plugin');
 
-module.exports = {
-  context: sourcePath,
-  entry: {
-    app: './src/index.tsx',
-  },
-  output: {
-    path: outPath,
-    filename: 'bundle.js',
-    chunkFilename: '[chunkhash].js',
-    publicPath: '/',
-  },
-  target: 'web',
-  mode: 'development',
-  resolve: {
-    extensions: ['.mjs', '.js', '.jsx', '.ts', '.tsx'],
-    mainFields: ['module', 'browser', 'main'],
-    plugins: [new TsConfigPathsPlugin({})],
-  },
-  module: {
-    rules: [
-      ...baseRules,
-      {
-        test: /\.html$/,
-        loader: 'html-loader',
-      },
-      {
-        test: /\.css$/i,
-        use: ['style-loader', 'css-loader'],
-      },
+module.exports = (env, argv) => {
+  const isProduction = argv.mode === 'production';
+  
+  return {
+    context: sourcePath,
+    entry: {
+      app: './src/index.tsx',
+    },
+    output: {
+      path: outPath,
+      filename: isProduction ? '[name].[contenthash].js' : 'bundle.js',
+      chunkFilename: isProduction ? '[name].[contenthash].js' : '[chunkhash].js',
+      publicPath: '/',
+      clean: true,
+    },
+    target: 'web',
+    mode: isProduction ? 'production' : 'development',
+    resolve: {
+      extensions: ['.mjs', '.js', '.jsx', '.ts', '.tsx'],
+      mainFields: ['module', 'browser', 'main'],
+      plugins: [new TsConfigPathsPlugin({})],
+    },
+    module: {
+      rules: [
+        ...baseRules,
+        {
+          test: /\.html$/,
+          loader: 'html-loader',
+        },
+        {
+          test: /\.css$/i,
+          use: ['style-loader', 'css-loader'],
+        },
+      ],
+    },
+    plugins: [
+      ...(isProduction ? [] : [
+        new webpack.HotModuleReplacementPlugin(),
+        new ReactRefreshWebpackPlugin(),
+      ]),
+      new HtmlWebpackPlugin({
+        template: path.join(__dirname, 'public', 'index.html'),
+      }),
+      new ForkTsCheckerWebpackPlugin(),
     ],
-  },
-  plugins: [
-    new webpack.HotModuleReplacementPlugin(),
-    new ReactRefreshWebpackPlugin(),
-    new HtmlWebpackPlugin({
-      template: path.join(__dirname, 'public', 'index.html'),
-    }),
-    new ForkTsCheckerWebpackPlugin(),
-  ],
-  devServer: {
-    historyApiFallback: true,
-  },
+    devServer: {
+      historyApiFallback: true,
+    },
+  };
 };
