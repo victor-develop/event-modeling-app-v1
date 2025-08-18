@@ -527,10 +527,7 @@ export const updateTypeDirective = (node: ParserField, nodeId: string, blockType
       name: newTypeName,
       type: {
         ...updatedNode.type,
-        fieldType: {
-          ...updatedNode.type.fieldType,
-          name: newTypeName
-        }
+        fieldType: updatedNode.type.fieldType
       }
     };
   }

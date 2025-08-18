@@ -260,10 +260,11 @@ const syncBlocksWithSchemaUsingNodeId = (blocks: BlockInfo[], currentSchema: str
     
     // Clean up orphaned types (types that exist in schema but not in blocks)
     const ast = parseSchemaToAST(updatedSchema);
-    const orphanedTypeNames = findOrphanedTypes(ast, blocks);
+    const orphanedTypes = findOrphanedTypes(ast, blocks);
     
-    if (orphanedTypeNames.length > 0) {
-      console.log(`[DEBUG] Found ${orphanedTypeNames.length} orphaned types:`, orphanedTypeNames);
+    if (orphanedTypes.length > 0) {
+      const orphanedTypeNames = orphanedTypes.map(type => type.name);
+      console.log(`[DEBUG] Found ${orphanedTypes.length} orphaned types:`, orphanedTypeNames);
       
       let cleanedAST = ast;
       for (const typeName of orphanedTypeNames) {

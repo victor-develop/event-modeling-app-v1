@@ -41,11 +41,7 @@ describe('NodeId-Based Schema Synchronization', () => {
     }
   `;
 
-  const mockBlocks: BlockInfo[] = [
-    { id: 'block-123', title: 'User Registration', type: 'command' },
-    { id: 'block-456', title: 'User Created', type: 'event' },
-    { id: 'block-789', title: 'User Profile', type: 'view' }
-  ];
+  // Mock blocks for testing (removed unused variable)
 
   describe('Enhanced Sync Logic Integration', () => {
     it('should handle block rename by updating type name while preserving nodeId', () => {
@@ -142,13 +138,29 @@ describe('NodeId-Based Schema Synchronization', () => {
         { id: 'block-123', title: 'User Registration', type: 'command' },
         { id: 'block-123', title: 'Duplicate Block', type: 'event' }
       ];
+
+      // Test that duplicate nodeIds are handled gracefully
+      const ast = parseSchemaToAST(sampleSchemaWithDirectives);
+      const orphanedTypes = findOrphanedTypes(ast, duplicateBlocks);
+      
+      // Should still work with duplicate blocks
+      expect(Array.isArray(orphanedTypes)).toBe(true);
+    });
+
+    it('should find the first matching type', () => {
+      const duplicateBlocks: BlockInfo[] = [
+        { id: 'block-123', title: 'User Registration', type: 'command' },
+        { id: 'block-123', title: 'Duplicate Block', type: 'event' }
+      ];
       
       const ast = parseSchemaToAST(sampleSchemaWithDirectives);
       const foundType = findTypeByNodeId(ast, 'block-123');
+      const orphanedTypes = findOrphanedTypes(ast, duplicateBlocks);
       
-      // Should find the first matching type
+      // Should find the first matching type and handle duplicates
       expect(foundType).toBeDefined();
       expect(foundType?.name).toBe('UserRegistration');
+      expect(Array.isArray(orphanedTypes)).toBe(true);
     });
   });
 

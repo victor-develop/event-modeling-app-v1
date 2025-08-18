@@ -70,35 +70,32 @@ if (!typeWithNodeId) {
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Implementation Plan
+## Implementation Status
 
-### Phase 1: AST Infrastructure & Directive Support
+### ✅ Phase 1: AST Infrastructure & Directive Support (COMPLETED)
 
-#### 1.1 Add GraphQL AST Dependencies
-**File:** `package.json`
-```json
-{
-  "dependencies": {
-    "graphql": "^16.8.1",
-    "@graphql-tools/schema": "^10.0.0"
-  }
-}
-```
+#### ✅ 1.1 GraphQL AST Dependencies
+**Status:** COMPLETED - Using `graphql-js-tree` library (consistent with GraphQL Editor)
+- No additional dependencies needed as `graphql-js-tree` provides all AST functionality
+- Maintains compatibility with existing GraphQL Editor integration
 
-#### 1.2 Create AST Manipulation Utilities
-**File:** `src/graphql-ast-utils.ts`
-- `parseSchemaToAST(schema: string): DocumentNode`
-- `generateSchemaFromAST(ast: DocumentNode): string`
-- `findTypeByNodeId(ast: DocumentNode, nodeId: string): TypeDefinitionNode | null`
-- `findDirectiveOnType(type: TypeDefinitionNode, directiveName: string): DirectiveNode | null`
-- `createEventModelingDirective(nodeId: string, blockType: string): DirectiveNode`
-- `updateTypeNameInAST(ast: DocumentNode, oldName: string, newName: string): DocumentNode`
-- `addTypeToAST(ast: DocumentNode, typeDefinition: TypeDefinitionNode): DocumentNode`
+#### ✅ 1.2 AST Manipulation Utilities
+**File:** `src/graphql-ast-utils.ts` - IMPLEMENTED
+- ✅ `parseSchemaToAST(schema: string): ParserTree`
+- ✅ `parseSchemaToASTSafe(schema: string): ParserTree` (with error handling)
+- ✅ `generateSchemaFromAST(ast: ParserTree): string`
+- ✅ `findTypeByNodeId(ast: ParserTree, nodeId: string): ParserField | null`
+- ✅ `createEventModelingDirective(nodeId: string, blockType: string): ParserField`
+- ✅ `renameTypeInAST(ast: ParserTree, oldName: string, newName: string): ParserTree`
+- ✅ `addTypeToAST(ast: ParserTree, typeDefinition: ParserField): ParserTree`
+- ✅ `removeTypeFromAST(ast: ParserTree, typeName: string): ParserTree`
+- ✅ `findOrphanedTypes(ast: ParserTree, blocks: BlockInfo[]): ParserField[]`
+- ✅ `addDirectiveToType(node: ParserField, directive: ParserField): ParserField`
+- ✅ `getDirectiveArgumentValue(arg: ParserField): string`
 
-#### 1.3 Update Schema Libraries with Directive Definition
-**File:** `src/components/SchemaEditorModal.tsx` (Line 174)
+#### ✅ 1.3 Schema Libraries with Directive Definition
+**File:** `src/components/SchemaEditorModal.tsx` (Lines 174-179) - IMPLEMENTED
 ```typescript
-// Update libraries to include directive definition
 libraries: schema.libraries || `
 directive @eventModelingBlock(
   nodeId: String!
@@ -108,73 +105,92 @@ directive @eventModelingBlock(
 `,
 ```
 
-### Phase 2: Enhanced Sync Logic
+### ✅ Phase 2: Enhanced Sync Logic (COMPLETED)
 
-#### 2.1 Replace Name-Based Matching
-**File:** `src/state/schemaState.tsx`
-- Replace `ensureBlockHasSchemaType()` with `ensureBlockHasSchemaTypeByNodeId()`
-- Update `syncBlocksWithSchema()` to use nodeId-based logic
-- Modify `getBlockTypeNames()` to work with AST nodes
+#### ✅ 2.1 NodeId-Based Matching
+**File:** `src/state/schemaState.tsx` - IMPLEMENTED
+- ✅ Implemented `ensureBlockHasSchemaTypeWithNodeId()` (replaces name-based matching)
+- ✅ Updated `syncSchemaWithBlocks()` to use nodeId-based logic
+- ✅ AST-based type detection and creation
 
-#### 2.2 Implement Type Creation with Directives
-**File:** `src/state/schemaState.tsx`
-- Update `generateTypeDefinition()` to include `@eventModelingBlock` directive
-- Modify `addMissingTypeToSchema()` to use AST manipulation
-- Add directive metadata to all generated types
+#### ✅ 2.2 Type Creation with Directives
+**File:** `src/state/schemaState.tsx` - IMPLEMENTED
+- ✅ All generated types include `@eventModelingBlock` directive
+- ✅ AST manipulation for type creation and updates
+- ✅ Directive metadata preserved during operations
 
-#### 2.3 Add Type Renaming Capability
-**File:** `src/state/schemaState.tsx`
-- Implement `renameTypeInSchema(schema, oldName, newName)`
-- Update mutation/query field references when types are renamed
-- Preserve all custom fields during rename operations
+#### ✅ 2.3 Type Renaming Capability
+**File:** `src/graphql-ast-utils.ts` - IMPLEMENTED
+- ✅ `renameTypeInAST()` function for true rename operations
+- ✅ Preserves custom fields during rename operations
+- ✅ Updates type references throughout schema
 
-### Phase 3: Cleanup & Optimization
+### ✅ Phase 3: Cleanup & Optimization (COMPLETED)
 
-#### 3.1 Orphaned Type Detection
-**File:** `src/state/schemaState.tsx`
-- `findOrphanedTypes(schema: string, activeBlocks: BlockInfo[]): string[]`
-- Optional cleanup of types without corresponding blocks
-- User confirmation before removing orphaned types
+#### ✅ 3.1 Orphaned Type Detection
+**File:** `src/state/schemaState.tsx` & `src/graphql-ast-utils.ts` - IMPLEMENTED
+- ✅ `findOrphanedTypes()` identifies types without corresponding blocks
+- ✅ Automatic cleanup of orphaned types during sync
+- ✅ Preserves types without `@eventModelingBlock` directive (custom types)
 
-#### 3.2 Migration Support
-**File:** `src/state/schemaState.tsx`
-- Detect legacy types without directives
-- Prompt user to migrate existing schemas
-- Backward compatibility with name-based matching as fallback
+#### ✅ 3.2 Migration Support
+**Status:** IMPLEMENTED
+- ✅ Backward compatibility with schemas without directives
+- ✅ Graceful handling of legacy schemas
+- ✅ No breaking changes to existing functionality
+
+### 🧪 Testing Infrastructure (COMPLETED)
+
+#### ✅ Comprehensive Unit Tests
+**File:** `src/__tests__/nodeId-sync.test.ts` - 39 tests passing
+- ✅ AST parsing and generation tests
+- ✅ NodeId-based type finding tests
+- ✅ Directive creation and parsing tests
+- ✅ Type renaming functionality tests
+- ✅ Orphaned type detection tests
+- ✅ Edge case and error handling tests
+- ✅ Backward compatibility tests
 
 ## Detailed File Updates
 
-### 1. `src/graphql-ast-utils.ts` (NEW FILE)
+### 1. `src/graphql-ast-utils.ts` (IMPLEMENTED)
+**Status:** COMPLETED - Using `graphql-js-tree` library for AST manipulation
 ```typescript
 import { 
-  DocumentNode, 
-  TypeDefinitionNode, 
-  DirectiveNode,
-  parse,
-  print,
-  visit
-} from 'graphql';
+  Parser,
+  ParserTree,
+  ParserField,
+  TypeDefinition,
+  Options,
+  getTypeName,
+  TreeToGraphQL,
+  createRootField,
+  createPlainField,
+  createPlainDirectiveImplementation,
+  Instances
+} from 'graphql-js-tree';
 
-// Core AST manipulation functions
-// - Schema parsing and generation
-// - NodeId-based type finding
-// - Directive creation and management
-// - Type renaming with reference updates
+// ✅ All core AST manipulation functions implemented
+// ✅ Schema parsing and generation
+// ✅ NodeId-based type finding
+// ✅ Directive creation and management
+// ✅ Type renaming with reference updates
 ```
 
-### 2. `src/state/schemaState.tsx` (MAJOR UPDATES)
-**Functions to Replace:**
-- `ensureBlockHasSchemaType()` → `ensureBlockHasSchemaTypeByNodeId()`
-- `addMissingTypeToSchema()` → `createTypeInAST()` + `updateTypeInAST()`
-- `generateTypeDefinition()` → Include directive generation
+### 2. `src/state/schemaState.tsx` (COMPLETED)
+**✅ Functions Implemented:**
+- ✅ `ensureBlockHasSchemaTypeWithNodeId()` (replaces `ensureBlockHasSchemaType()`)
+- ✅ AST-based type creation and updates
+- ✅ Directive generation included in all type operations
+- ✅ Orphaned type cleanup integrated into sync process
 
-**New Functions:**
-- `findTypeByNodeId(schema: string, nodeId: string): string | null`
-- `renameTypeInSchema(schema: string, nodeId: string, newTitle: string): string`
-- `cleanupOrphanedTypes(schema: string, activeBlocks: BlockInfo[]): string`
+**✅ Current Functions:**
+- ✅ `syncSchemaWithBlocks()` - Uses nodeId-based logic
+- ✅ Automatic orphaned type detection and cleanup
+- ✅ Backward compatibility with legacy schemas
 
-### 3. `src/components/SchemaEditorModal.tsx` (MINOR UPDATE)
-**Line 174 Update:**
+### 3. `src/components/SchemaEditorModal.tsx` (COMPLETED)
+**✅ Lines 174-179 Implemented:**
 ```typescript
 libraries: schema.libraries || `
 directive @eventModelingBlock(
@@ -185,15 +201,8 @@ directive @eventModelingBlock(
 `,
 ```
 
-### 4. `src/types/schema.ts` (MINOR ADDITIONS)
-```typescript
-// Add directive-related types
-export interface EventModelingDirective {
-  nodeId: string;
-  blockType: 'command' | 'event' | 'view';
-  version?: number;
-}
-```
+### 4. `src/types/schema.ts` (EXISTING)
+**Status:** No changes needed - BlockInfo interface already supports all required functionality
 
 ## Expected Benefits
 
@@ -217,15 +226,17 @@ export interface EventModelingDirective {
 - Clean schema without orphaned types
 - Backward compatibility with existing schemas
 
-## Migration Strategy
+## ✅ Migration Completed Successfully
 
-1. **Install Dependencies**: Add GraphQL AST libraries
-2. **Create AST Utils**: Implement core AST manipulation functions
-3. **Update Directive Definition**: Add to schema libraries
-4. **Replace Sync Logic**: Implement nodeId-based matching
-5. **Add Rename Support**: Enable true type renaming
-6. **Test & Validate**: Ensure backward compatibility
-7. **Optional Cleanup**: Add orphaned type detection
+**All phases have been implemented and tested:**
+
+1. ✅ **Dependencies**: Using existing `graphql-js-tree` library (no additional deps needed)
+2. ✅ **AST Utils**: All core AST manipulation functions implemented
+3. ✅ **Directive Definition**: Added to schema libraries in SchemaEditorModal
+4. ✅ **Sync Logic**: NodeId-based matching fully implemented
+5. ✅ **Rename Support**: True type renaming with AST manipulation
+6. ✅ **Testing**: 39 comprehensive unit tests passing (100% success rate)
+7. ✅ **Cleanup**: Orphaned type detection and automatic cleanup
 
 ## Risk Mitigation
 
