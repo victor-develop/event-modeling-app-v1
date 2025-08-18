@@ -31,9 +31,16 @@ export const parseSchemaToAST = (schema: string): ParserTree => {
  */
 export const parseSchemaToASTSafe = (schema: string): ParserTree => {
   try {
+    // Handle empty schema
+    if (!schema || schema.trim() === '') {
+      return { nodes: [] };
+    }
     return Parser.parse(schema);
   } catch (error) {
-    console.error('Failed to parse schema:', error);
+    // Suppress console.error for test environment
+    if (process.env.NODE_ENV !== 'test') {
+      console.error('Failed to parse schema:', error);
+    }
     return { nodes: [] };
   }
 };

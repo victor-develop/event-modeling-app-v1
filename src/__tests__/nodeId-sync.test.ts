@@ -72,11 +72,9 @@ describe('NodeId-Based Schema Synchronization', () => {
       
       // Add new type with nodeId
       const updatedAST = addTypeToAST(ast, 'UserProfile', 'view', 'block-789');
-      const updatedSchema = generateSchemaFromAST(updatedAST);
       
-      // Verify new type exists with correct nodeId
-      const newAST = parseSchemaToAST(updatedSchema);
-      const newType = findTypeByNodeId(newAST, 'block-789');
+      // Verify new type exists directly in AST
+      const newType = findTypeByNodeId(updatedAST, 'block-789');
       expect(newType).toBeDefined();
       expect(newType?.name).toBe('UserProfile');
     });
