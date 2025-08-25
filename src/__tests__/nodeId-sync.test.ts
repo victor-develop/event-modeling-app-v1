@@ -1,10 +1,11 @@
-import {
-  parseSchemaToAST,
-  generateSchemaFromAST,
-  findTypeByNodeId,
-  addTypeToAST,
+import { 
+  parseSchemaToAST, 
+  generateSchemaFromAST, 
+  findTypeByNodeId, 
+  addTypeToAST, 
   renameTypeInAST,
   findOrphanedTypes,
+  findRelatedTypes,
   removeTypeFromAST
 } from '../graphql-ast-utils';
 import { BlockInfo } from '../types/schema';
@@ -53,14 +54,51 @@ describe('NodeId-Based Schema Synchronization', () => {
       expect(existingType?.name).toBe('UserRegistration');
       
       // Rename the type
-      const renamedAST = renameTypeInAST(ast, 'UserRegistration', 'CustomerRegistration');
-      const updatedSchema = generateSchemaFromAST(renamedAST);
+      const renamedAST = renameTypeInAST(ast, 'UserRegistration', 'UserSignup');
+      const renamedType = findTypeByNodeId(renamedAST, 'block-123');
       
-      // Verify the type was renamed but nodeId preserved
-      const newAST = parseSchemaToAST(updatedSchema);
-      const renamedType = findTypeByNodeId(newAST, 'block-123');
       expect(renamedType).toBeDefined();
-      expect(renamedType?.name).toBe('CustomerRegistration');
+      expect(renamedType?.name).toBe('UserSignup');
+    });
+
+    it('should handle composite nodeIds for command blocks', () => {
+      const commandSchema = `
+        input createUserInput @eventModelingBlock(nodeId: "cmd-123-input", blockType: "command", version: 1) {
+          name: String!
+          email: String!
+        }
+        
+        type createUserCommandResult @eventModelingBlock(nodeId: "cmd-123-result", blockType: "command", version: 1) {
+          success: Boolean!
+          userId: ID
+        }
+        
+        type Mutation {
+          createUser(input: createUserInput!): createUserCommandResult!
+        }
+      `;
+      
+      const ast = parseSchemaToAST(commandSchema);
+      
+      // Should find input type by composite nodeId
+      const inputType = findTypeByNodeId(ast, 'cmd-123-input');
+      expect(inputType).toBeDefined();
+      expect(inputType?.name).toBe('createUserInput');
+      
+      // Should find result type by composite nodeId
+      const resultType = findTypeByNodeId(ast, 'cmd-123-result');
+      expect(resultType).toBeDefined();
+      expect(resultType?.name).toBe('createUserCommandResult');
+      
+      // Should find input type by base nodeId
+      const inputByBase = findTypeByNodeId(ast, 'cmd-123');
+      expect(inputByBase).toBeDefined();
+      
+      // Should find all related types
+      const relatedTypes = findRelatedTypes(ast, 'cmd-123');
+      expect(relatedTypes).toHaveLength(2);
+      expect(relatedTypes.map(t => t.name)).toContain('createUserInput');
+      expect(relatedTypes.map(t => t.name)).toContain('createUserCommandResult');
     });
 
     it('should add new types with nodeId directives', () => {

@@ -26,7 +26,7 @@ if (!typeWithNodeId) {
 }
 ```
 
-## Call Chain Flow
+## Call Chain Flow (Current Implementation)
 
 ```ascii
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -36,36 +36,41 @@ if (!typeWithNodeId) {
 │  1. Block Creation/Update                                          │
 │     │                                                               │
 │     ▼                                                               │
-│  2. syncSchemaWithBlocks(blocks, schema)                           │
+│  2. syncBlocksWithSchemaUsingNodeId(blocks, schema)                │
 │     │                                                               │
 │     ▼                                                               │
-│  3. For each block: ensureBlockHasSchemaTypeByNodeId(block)        │
+│  3. For each block: ensureBlockHasSchemaTypeWithNodeId(block)      │
 │     │                                                               │
 │     ▼                                                               │
-│  4. parseSchemaAST(schema.code) → AST                              │
+│  4. parseSchemaToAST(schema) → ParserTree                          │
 │     │                                                               │
 │     ▼                                                               │
-│  5. findTypeByNodeId(AST, block.id) → existing type or null       │
+│  5. findTypeByNodeId(AST, block.id) → ParserField | null          │
 │     │                                                               │
 │     ├─── Type EXISTS (by nodeId) ──┐                               │
 │     │                               ▼                               │
-│     │                        updateTypeInAST(AST, type, block)     │
-│     │                        • Rename type if title changed        │
-│     │                        • Update directive metadata           │
+│     │                        Check if rename needed                │
+│     │                        • Compare block.title vs type.name    │
+│     │                        • Call renameTypeInAST if different   │
 │     │                        • Preserve custom fields              │
 │     │                                                               │
 │     └─── Type MISSING ──────┐                                      │
 │                               ▼                                     │
-│                        createTypeInAST(AST, block)                 │
+│                        addTypeToAST(AST, newType)                  │
 │                        • Generate type with @eventModelingBlock    │
 │                        • Add to Query/Mutation if needed           │
 │                        • Set nodeId directive                      │
 │     │                                                               │
 │     ▼                                                               │
-│  6. generateSchemaFromAST(AST) → updated schema string             │
+│  6. Clean up orphaned types                                        │
+│     • findOrphanedTypes(AST, blocks) → ParserField[]              │
+│     • removeTypeFromAST for each orphaned type                     │
 │     │                                                               │
 │     ▼                                                               │
-│  7. updateSchema({ code: newSchema, source: 'outside' })           │
+│  7. generateSchemaFromAST(AST) → updated schema string             │
+│     │                                                               │
+│     ▼                                                               │
+│  8. updateSchema({ code: newSchema, source: 'outside' })           │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -115,9 +120,32 @@ directive @eventModelingBlock(
 
 #### ✅ 2.2 Type Creation with Directives
 **File:** `src/state/schemaState.tsx` - IMPLEMENTED
-- ✅ All generated types include `@eventModelingBlock` directive
-- ✅ AST manipulation for type creation and updates
-- ✅ Directive metadata preserved during operations
+- ✅ AST manipulation functions available in `graphql-ast-utils.ts`
+- ✅ `addTypeToAST()` creates types with `@eventModelingBlock` directive
+- ✅ `generateTypeDefinition()` now includes `@eventModelingBlock` directive
+- ✅ Enhanced fallback logic prioritizes AST manipulation with directives
+- ✅ All type creation paths now include directive metadata
+
+#### 🔄 2.4 Composite NodeId Strategy for Multi-Type Blocks
+**Challenge:** Command blocks generate multiple related types that need unique identification
+- **Problem:** `createUser` command → `createUserInput`, `createUserCommandResult`, mutation field
+- **Current Issue:** All types share same nodeId, causing ambiguity in `findTypeByNodeId()`
+
+**Solution: Composite NodeId Strategy**
+```typescript
+// Base nodeId: "abc123" for createUser command block
+"abc123-input"    // createUserInput type
+"abc123-result"   // createUserCommandResult type  
+"abc123"          // createUser mutation field (main)
+```
+
+**Implementation Plan:**
+- ✅ Update `generateTypeDefinition()` to accept type role parameter
+- ✅ Implement composite nodeId generation logic
+- ✅ Modify `findTypeByNodeId()` to handle composite patterns
+- ✅ Add helper functions: `extractBaseNodeId()`, `findRelatedTypes()`
+- ✅ Update directive creation to use composite nodeIds
+- ✅ Maintain backward compatibility with single-type blocks
 
 #### ✅ 2.3 Type Renaming Capability
 **File:** `src/graphql-ast-utils.ts` - IMPLEMENTED

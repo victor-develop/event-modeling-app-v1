@@ -81,16 +81,25 @@ export const getDirectiveArgumentValue = (arg: ParserField): string => {
 };
 
 /**
- * Find type by nodeId directive
+ * Extract base nodeId from composite nodeId (removes -input, -result suffixes)
  */
-export const findTypeByNodeId = (ast: ParserTree, nodeId: string): ParserField | null => {
-  if (!ast.nodes) return null;
+export const extractBaseNodeId = (nodeId: string): string => {
+  return nodeId.replace(/-(?:input|result)$/, '');
+};
 
+/**
+ * Find all types related to a base nodeId (including composite variants)
+ */
+export const findRelatedTypes = (ast: ParserTree, baseNodeId: string): ParserField[] => {
+  if (!ast.nodes) return [];
+  
+  const relatedTypes: ParserField[] = [];
+  const searchPatterns = [baseNodeId, `${baseNodeId}-input`, `${baseNodeId}-result`];
+  
   for (const node of ast.nodes) {
     if (node.data?.type === TypeDefinition.ObjectTypeDefinition || 
         node.data?.type === TypeDefinition.InputObjectTypeDefinition) {
       
-      // Check if node has directives
       if (node.directives) {
         const eventModelingDirective = node.directives.find(
           directive => directive.name === 'eventModelingBlock'
@@ -102,10 +111,47 @@ export const findTypeByNodeId = (ast: ParserTree, nodeId: string): ParserField |
           );
           
           if (nodeIdArg) {
-            // Check both the parsed argument value and the raw value
             const argValue = getDirectiveArgumentValue(nodeIdArg);
             const rawValue = nodeIdArg.value?.value || argValue;
-            if (argValue === nodeId || rawValue === nodeId) {
+            const nodeIdValue = rawValue || argValue;
+            if (searchPatterns.includes(nodeIdValue)) {
+              relatedTypes.push(node);
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  return relatedTypes;
+};
+
+/**
+ * Find a type definition by nodeId directive (supports composite nodeIds)
+ */
+export const findTypeByNodeId = (ast: ParserTree, nodeId: string): ParserField | null => {
+  if (!ast.nodes) return null;
+  
+  for (const node of ast.nodes) {
+    if (node.data?.type === TypeDefinition.ObjectTypeDefinition || 
+        node.data?.type === TypeDefinition.InputObjectTypeDefinition) {
+      
+      if (node.directives) {
+        const eventModelingDirective = node.directives.find(
+          directive => directive.name === 'eventModelingBlock'
+        );
+        
+        if (eventModelingDirective && eventModelingDirective.args) {
+          const nodeIdArg = eventModelingDirective.args.find(
+            arg => arg.name === 'nodeId'
+          );
+          
+          if (nodeIdArg) {
+            const argValue = getDirectiveArgumentValue(nodeIdArg);
+            const rawValue = nodeIdArg.value?.value || argValue;
+            const nodeIdValue = rawValue || argValue;
+            // Support both exact match and base nodeId match
+            if (nodeIdValue === nodeId || extractBaseNodeId(nodeIdValue) === nodeId) {
               return node;
             }
           }

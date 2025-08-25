@@ -40,17 +40,33 @@ const TYPE_SUFFIXES = {
 } as const;
 
 
-// Helper function to generate type definition for a specific type name
-const generateTypeDefinition = (typeName: string, blockType: string): string => {
+// Helper function to generate composite nodeId based on type role
+const generateCompositeNodeId = (baseNodeId: string, typeName: string, blockType: string): string => {
+  if (blockType === 'command') {
+    if (typeName.endsWith(TYPE_SUFFIXES.INPUT)) {
+      return `${baseNodeId}-input`;
+    } else if (typeName.endsWith(TYPE_SUFFIXES.COMMAND_RESULT)) {
+      return `${baseNodeId}-result`;
+    }
+  }
+  // For main types (event, view, command mutation field), use base nodeId
+  return baseNodeId;
+};
+
+// Helper function to generate type definition for a specific type name with directives
+const generateTypeDefinition = (typeName: string, blockType: string, baseNodeId?: string): string => {
+  const compositeNodeId = baseNodeId ? generateCompositeNodeId(baseNodeId, typeName, blockType) : undefined;
+  const directiveString = compositeNodeId ? ` @eventModelingBlock(nodeId: "${compositeNodeId}", blockType: "${blockType}", version: 1)` : '';
+  
   switch (blockType) {
     case 'command':
       if (typeName.endsWith(TYPE_SUFFIXES.INPUT)) {
-        return `input ${typeName} {
+        return `input ${typeName}${directiveString} {
   # Define command parameters here
   id: ID!
 }`;
       } else if (typeName.endsWith(TYPE_SUFFIXES.COMMAND_RESULT)) {
-        return `type ${typeName} {
+        return `type ${typeName}${directiveString} {
   # Define command result here
   success: Boolean!
   message: String
@@ -58,13 +74,13 @@ const generateTypeDefinition = (typeName: string, blockType: string): string => 
       }
       break;
     case 'event':
-      return `type ${typeName} {
+      return `type ${typeName}${directiveString} {
   # Define event payload here
   id: ID!
   timestamp: String!
 }`;
     case 'view':
-      return `type ${typeName} {
+      return `type ${typeName}${directiveString} {
   # Define view structure here
   id: ID!
 }`;
@@ -110,7 +126,7 @@ const addMissingTypeToSchema = (currentSchema: string, block: BlockInfo): string
     const newTypeDefinitions: string[] = [];
     
     missingTypes.forEach(typeName => {
-      const typeDefinition = generateTypeDefinition(typeName, block.type);
+      const typeDefinition = generateTypeDefinition(typeName, block.type, block.id);
       if (typeDefinition) {
         newTypeDefinitions.push(typeDefinition);
       }
@@ -130,7 +146,7 @@ const addMissingTypeToSchema = (currentSchema: string, block: BlockInfo): string
     const newTypeDefinitions: string[] = [];
     
     allTypeNames.forEach(typeName => {
-      const typeDefinition = generateTypeDefinition(typeName, block.type);
+      const typeDefinition = generateTypeDefinition(typeName, block.type, block.id);
       if (typeDefinition) {
         newTypeDefinitions.push(typeDefinition);
       }
@@ -238,8 +254,17 @@ const ensureBlockHasSchemaTypeWithNodeId = (block: BlockInfo, currentSchema: str
     
   } catch (error) {
     console.error(`[ERROR] Failed to process block ${block.title}:`, error);
-    // Fallback to original name-based logic
-    return addMissingTypeToSchema(currentSchema, block);
+    // Enhanced fallback: still use AST but with simpler logic
+    try {
+      const typeName = toCamelCase(block.title);
+      const emptyAST = parseSchemaToAST(currentSchema.trim() || 'type Query { _empty: String }');
+      const updatedAST = addTypeToAST(emptyAST, typeName, block.type, block.id);
+      return generateSchemaFromAST(updatedAST);
+    } catch (fallbackError) {
+      console.error(`[ERROR] Fallback also failed for block ${block.title}:`, fallbackError);
+      // Last resort: use old logic but with directives
+      return addMissingTypeToSchema(currentSchema, block);
+    }
   }
 };
 
