@@ -2,15 +2,7 @@ import React, { createContext, useCallback, useContext, useState } from 'react';
 import { PassedSchema } from 'graphql-editor';
 import { BlockInfo } from '../types/schema';
 import { parseSchema, findTypeNames } from '../utils/schemaPreservation';
-import { 
-  parseSchemaToAST, 
-  generateSchemaFromAST, 
-  findTypeByNodeId, 
-  addTypeToAST, 
-  renameTypeInAST,
-  findOrphanedTypes,
-  removeTypeFromAST
-} from '../graphql-ast-utils';
+import { parseSchemaToAST, generateSchemaFromAST, addTypeToAST, findTypeByNodeId, DIRECTIVE_NAMES, renameTypeInAST, findOrphanedTypes, removeTypeFromAST } from '../graphql-ast-utils';
 import { toCamelCase } from '../utils/stringUtils';
 
 // Define the schema state interface
@@ -56,7 +48,7 @@ const generateCompositeNodeId = (baseNodeId: string, typeName: string, blockType
 // Helper function to generate type definition for a specific type name with directives
 const generateTypeDefinition = (typeName: string, blockType: string, baseNodeId?: string): string => {
   const compositeNodeId = baseNodeId ? generateCompositeNodeId(baseNodeId, typeName, blockType) : undefined;
-  const directiveString = compositeNodeId ? ` @eventModelingBlock(nodeId: "${compositeNodeId}", blockType: "${blockType}", version: 1)` : '';
+  const directiveString = compositeNodeId ? ` @${DIRECTIVE_NAMES.EVENT_MODELING_BLOCK}(nodeId: "${compositeNodeId}", blockType: "${blockType}", version: 1)` : '';
   
   switch (blockType) {
     case 'command':

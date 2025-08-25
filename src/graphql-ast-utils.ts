@@ -13,6 +13,20 @@ import {
 } from 'graphql-js-tree';
 import { BlockInfo } from './types/schema';
 
+// Constants for nodeId suffixes and directive names
+export const NODEID_SUFFIXES = {
+  INPUT: '-input',
+  RESULT: '-result'
+} as const;
+
+export const DIRECTIVE_NAMES = {
+  EVENT_MODELING_BLOCK: 'eventModelingBlock'
+} as const;
+
+export const DIRECTIVE_ARGS = {
+  NODE_ID: 'nodeId'
+} as const;
+
 /**
  * Parse GraphQL schema string to AST using graphql-js-tree
  */
@@ -84,7 +98,7 @@ export const getDirectiveArgumentValue = (arg: ParserField): string => {
  * Extract base nodeId from composite nodeId (removes -input, -result suffixes)
  */
 export const extractBaseNodeId = (nodeId: string): string => {
-  return nodeId.replace(/-(?:input|result)$/, '');
+  return nodeId.replace(new RegExp(`(?:${NODEID_SUFFIXES.INPUT}|${NODEID_SUFFIXES.RESULT})$`), '');
 };
 
 /**
@@ -94,7 +108,7 @@ export const findRelatedTypes = (ast: ParserTree, baseNodeId: string): ParserFie
   if (!ast.nodes) return [];
   
   const relatedTypes: ParserField[] = [];
-  const searchPatterns = [baseNodeId, `${baseNodeId}-input`, `${baseNodeId}-result`];
+  const searchPatterns = [baseNodeId, `${baseNodeId}${NODEID_SUFFIXES.INPUT}`, `${baseNodeId}${NODEID_SUFFIXES.RESULT}`];
   
   for (const node of ast.nodes) {
     if (node.data?.type === TypeDefinition.ObjectTypeDefinition || 
@@ -102,12 +116,12 @@ export const findRelatedTypes = (ast: ParserTree, baseNodeId: string): ParserFie
       
       if (node.directives) {
         const eventModelingDirective = node.directives.find(
-          directive => directive.name === 'eventModelingBlock'
+          directive => directive.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK
         );
         
         if (eventModelingDirective && eventModelingDirective.args) {
           const nodeIdArg = eventModelingDirective.args.find(
-            arg => arg.name === 'nodeId'
+            arg => arg.name === DIRECTIVE_ARGS.NODE_ID
           );
           
           if (nodeIdArg) {
@@ -138,12 +152,12 @@ export const findTypeByNodeId = (ast: ParserTree, nodeId: string): ParserField |
       
       if (node.directives) {
         const eventModelingDirective = node.directives.find(
-          directive => directive.name === 'eventModelingBlock'
+          directive => directive.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK
         );
         
         if (eventModelingDirective && eventModelingDirective.args) {
           const nodeIdArg = eventModelingDirective.args.find(
-            arg => arg.name === 'nodeId'
+            arg => arg.name === DIRECTIVE_ARGS.NODE_ID
           );
           
           if (nodeIdArg) {
@@ -369,12 +383,12 @@ export const findOrphanedTypes = (ast: ParserTree, activeBlocks: BlockInfo[]): P
       
       if (node.directives) {
         const eventModelingDirective = node.directives.find(
-          directive => directive.name === 'eventModelingBlock'
+          directive => directive.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK
         );
         
         if (eventModelingDirective && eventModelingDirective.args) {
           const nodeIdArg = eventModelingDirective.args.find(
-            arg => arg.name === 'nodeId'
+            arg => arg.name === DIRECTIVE_ARGS.NODE_ID
           );
           
           if (nodeIdArg) {
