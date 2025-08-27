@@ -1,17 +1,20 @@
 import { 
   Parser,
-  ParserTree,
-  ParserField,
-  TypeDefinition,
+  ParserTree, 
+  ParserField, 
+  TypeDefinition, 
   Options,
   getTypeName,
   TreeToGraphQL,
   createRootField,
   createPlainField,
   createPlainDirectiveImplementation,
-  Instances
+  Instances 
 } from 'graphql-js-tree';
 import { BlockInfo } from './types/schema';
+
+// Re-export types for use in other modules
+export type { ParserTree, ParserField, TypeDefinition };
 
 // Constants for nodeId suffixes and directive names
 export const NODEID_SUFFIXES = {
@@ -142,35 +145,59 @@ export const findRelatedTypes = (ast: ParserTree, baseNodeId: string): ParserFie
 
 /**
  * Find a type definition by nodeId directive (supports composite nodeIds)
+ * Uses safe traversal of the ParserTree structure
  */
 export const findTypeByNodeId = (ast: ParserTree, nodeId: string): ParserField | null => {
-  if (!ast.nodes) return null;
+  if (!ast?.nodes || !Array.isArray(ast.nodes) || !nodeId) {
+    return null;
+  }
   
+  // Helper function to safely extract nodeId from directive
+  const extractNodeIdFromDirective = (directive: any): string | null => {
+    if (!directive?.args || !Array.isArray(directive.args)) {
+      return null;
+    }
+    
+    const nodeIdArg = directive.args.find(
+      (arg: any) => arg?.name === DIRECTIVE_ARGS.NODE_ID
+    );
+    
+    if (!nodeIdArg) {
+      return null;
+    }
+    
+    const argValue = getDirectiveArgumentValue(nodeIdArg);
+    const rawValue = nodeIdArg.value?.value || argValue;
+    return rawValue || argValue || null;
+  };
+  
+  // Traverse nodes safely
   for (const node of ast.nodes) {
-    if (node.data?.type === TypeDefinition.ObjectTypeDefinition || 
-        node.data?.type === TypeDefinition.InputObjectTypeDefinition) {
-      
-      if (node.directives) {
-        const eventModelingDirective = node.directives.find(
-          directive => directive.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK
-        );
-        
-        if (eventModelingDirective && eventModelingDirective.args) {
-          const nodeIdArg = eventModelingDirective.args.find(
-            arg => arg.name === DIRECTIVE_ARGS.NODE_ID
-          );
-          
-          if (nodeIdArg) {
-            const argValue = getDirectiveArgumentValue(nodeIdArg);
-            const rawValue = nodeIdArg.value?.value || argValue;
-            const nodeIdValue = rawValue || argValue;
-            // Support both exact match and base nodeId match
-            if (nodeIdValue === nodeId || extractBaseNodeId(nodeIdValue) === nodeId) {
-              return node;
-            }
-          }
-        }
-      }
+    // Check if this is a type definition we care about
+    const isTargetType = node?.data?.type === TypeDefinition.ObjectTypeDefinition || 
+                        node?.data?.type === TypeDefinition.InputObjectTypeDefinition;
+    
+    if (!isTargetType || !node.directives || !Array.isArray(node.directives)) {
+      continue;
+    }
+    
+    // Look for the eventModeling directive
+    const eventModelingDirective = node.directives.find(
+      (directive: any) => directive?.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK
+    );
+    
+    if (!eventModelingDirective) {
+      continue;
+    }
+    
+    const nodeIdValue = extractNodeIdFromDirective(eventModelingDirective);
+    if (!nodeIdValue) {
+      continue;
+    }
+    
+    // Support both exact match and base nodeId match for composite nodeIds
+    if (nodeIdValue === nodeId || extractBaseNodeId(nodeIdValue) === nodeId) {
+      return node;
     }
   }
   
