@@ -89,12 +89,23 @@ export const findDirectiveOnType = (node: ParserField, directiveName: string): P
  * Get directive argument value
  */
 export const getDirectiveArgumentValue = (arg: ParserField): string => {
-  if (!arg || !arg.type?.fieldType) return '';
-  try {
-    return getTypeName(arg.type.fieldType);
-  } catch (error) {
-    return '';
+  if (!arg) return '';
+  
+  // Check if the argument has a value property (for directive arguments)
+  if (arg.value?.value) {
+    return arg.value.value;
   }
+  
+  // Fallback to type field name if no value property
+  if (arg.type?.fieldType) {
+    try {
+      return getTypeName(arg.type.fieldType);
+    } catch (error) {
+      return '';
+    }
+  }
+  
+  return '';
 };
 
 /**
@@ -301,52 +312,22 @@ export const addTypeToAST = (ast: ParserTree, typeName: string, blockType: strin
     ast.nodes = [];
   }
 
-  // Create the directive
+  // Create the directive with proper argument structure
   const eventModelingDirective = createPlainDirectiveImplementation({
     name: 'eventModelingBlock',
     args: [
-      {
+      createPlainField({
         name: 'nodeId',
-        id: `eventModelingBlock-nodeId-${nodeId}`,
-        type: {
-          fieldType: {
-            name: nodeId,
-            type: Options.name
-          }
-        },
-        data: { type: Instances.Argument },
-        args: [],
-        interfaces: [],
-        directives: []
-      },
-      {
-        name: 'blockType',
-        id: `eventModelingBlock-blockType-${blockType}`,
-        type: {
-          fieldType: {
-            name: blockType,
-            type: Options.name
-          }
-        },
-        data: { type: Instances.Argument },
-        args: [],
-        interfaces: [],
-        directives: []
-      },
-      {
+        type: `"${nodeId}"`
+      }),
+      createPlainField({
+        name: 'blockType', 
+        type: `"${blockType}"`
+      }),
+      createPlainField({
         name: 'version',
-        id: `eventModelingBlock-version-1`,
-        type: {
-          fieldType: {
-            name: '1',
-            type: Options.name
-          }
-        },
-        data: { type: Instances.Argument },
-        args: [],
-        interfaces: [],
-        directives: []
-      }
+        type: '1'
+      })
     ]
   });
 

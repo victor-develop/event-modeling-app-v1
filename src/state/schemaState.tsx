@@ -153,7 +153,7 @@ const getNodeIdForType = (block: BlockInfo, typeName: string): string => {
 const analyzeBlockSchemaChanges = (block: BlockInfo, ast: ParserTree): SchemaChangePlan => {
   const requiredTypeNames = getBlockTypeNames(block);
   
-  console.log(`[DEBUG] ===== analyzeBlockSchemaChanges for block: ${block.title} (${block.type}) =====`);
+  console.log(`[DEBUG] ===== analyzeBlockSchemaChanges for block: ${block.id} ${block.title} (${block.type}) =====`);
   console.log(`[DEBUG] Required type names:`, requiredTypeNames);
   
   const changes: SchemaChangePlan = {
@@ -181,7 +181,7 @@ const analyzeBlockSchemaChanges = (block: BlockInfo, ast: ParserTree): SchemaCha
       }
     }
   });
-  
+  debugger;
   // Check each required type with its specific nodeId
   for (const typeName of requiredTypeNames) {
     // Get the correct nodeId for this specific type
@@ -228,6 +228,7 @@ export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Function to update the schema
   const updateSchema = useCallback((data: PassedSchema) => {
     console.log('[DEBUG] updateSchema called with source:', data.source);
+    console.log('[DEBUG] updateSchema called with data:', data);
     setSchema({
       ...data,
       source: "outside"
@@ -267,7 +268,7 @@ export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         
         const updatedAST = applyChangePlan(ast, changePlan);
         const updatedSchemaCode = generateSchemaFromAST(updatedAST);
-        
+        debugger
         updateSchema({
           source: 'outside',
           code: updatedSchemaCode
@@ -276,10 +277,11 @@ export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         console.log('[DEBUG] No changes needed, schema is up to date');
       }
     } catch (error) {
+      debugger;
       console.error('[ERROR] NodeId-based sync failed:', error);
       // No fallback - fail fast if nodeId sync doesn't work
     }
-  }, [schema, updateSchema]);
+  }, [updateSchema]);
 
   // Function to get the schema AST
   const getSchemaAST = useCallback(() => {
