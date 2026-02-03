@@ -1,326 +1,199 @@
-# Schema State Architecture Documentation
+# Schema State Architecture & Canvas ↔ Modal Sync
 
-## Overview
+This document describes the **schema state** as the single source of truth, how the **event modeling canvas** and the **Schema Editor modal** sync with it, and why **modal mount timing** and **schema.source** are critical for correct behavior.
 
-The `schemaState.tsx` file is the **central state manager** for the Event Modeling Prototype, orchestrating bidirectional sync between the visual UI and GraphQL schema editor using GraphQL Editor's `PassedSchema` interface.
+---
 
-## Core Architecture
+## 1. Overview
+
+The `schemaState.tsx` file is the **central state manager** for the Event Modeling Prototype. It holds one **PassedSchema** (`code`, `libraries`, `source`) and exposes `updateSchema` and `syncSchemaWithBlocks`. The **canvas** drives which types exist (add/rename/remove by block id and title); the **Schema Editor modal** (graphql-editor) drives field-level content. Both read from and write to the same schema state; **source** and **modal open timing** prevent loops and ensure the Relation view parses on re-open.
+
+---
+
+## 2. Core Architecture
 
 ```ascii
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        SCHEMA STATE PROVIDER                        │
+│                        (schemaState.tsx)                             │
 ├─────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐  │
-│  │   PassedSchema  │    │  BlockRegistry  │    │  Notifications  │  │
-│  │ • code: string  │    │ • id: string    │    │ • rename alerts │  │
-│  │ • libraries     │    │ • title: string │    │ • type changes  │  │
-│  │ • source: enum  │    │ • type: enum    │    │ • sync status   │  │
-│  └─────────────────┘    └─────────────────┘    └─────────────────┘  │
+│  PassedSchema: { code, libraries, source }                          │
+│  updateSchema(data)  • preserve source when 'code'|'tree'           │
+│  syncSchemaWithBlocks(blocks)  • add/rename/remove types by nodeId  │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
                     ┌───────────────┼───────────────┐
                     │               │               │
                     ▼               ▼               ▼
         ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-        │   App.tsx       │ │ SchemaEditor    │ │   Utilities     │
-        │ • Event nodes   │ │    Modal        │ │ • Import/Export │
-        │ • Block mgmt    │ │ • GraphQL Edit  │ │ • Schema Utils  │
+        │   App.tsx       │ │ SchemaEditor    │ │ Import/Export,   │
+        │ nodes → blocks  │ │    Modal        │ │ Paste            │
+        │ syncSchemaWith  │ │ schema ↔ editor │ │ updateSchema(    │
+        │ Blocks()        │ │ setSchema →     │ │   source:'outside│
         └─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
-## Key Components
+**Ownership:**
 
-### **PassedSchema Interface**
+- **Canvas**: which blocks exist, their ids and titles (type names). Drives add/rename/remove of GraphQL types via `syncSchemaWithBlocks`.
+- **Schema Editor**: field-level content (what’s inside each type). Writes back via `setSchema` → `updateSchema`.
+- **Schema state**: single source of truth; both sides read and write it.
+
+---
+
+## 3. PassedSchema and source
+
 ```typescript
 interface PassedSchema {
-  code: string;           // GraphQL schema code
-  libraries?: string;     // Additional libraries
-  source: "tree" | "code" | "outside";  // Change origin
+  code: string;
+  libraries?: string;
+  source: "tree" | "code" | "outside";
 }
 ```
 
-**Source Values:**
-- `"code"` → Changes from GraphQL code editor
-- `"tree"` → Changes from visual UI/tree editor  
-- `"outside"` → External changes (imports, initialization)
+| source     | Meaning |
+|-----------|---------|
+| `"code"`  | Change from GraphQL code pane in the editor |
+| `"tree"`  | Change from visual Relation/tree in the editor |
+| `"outside"` | Change from app (sync, import, paste, init) |
 
-### **Core Functions**
+**Why it matters:** graphql-editor uses `schema.source` to decide whether to run `generateTreeFromSchema(schema)` when the schema prop changes. If `source === 'tree'` it **skips** to avoid re-parsing after its own tree→code update. If we always passed `'outside'` we’d get redundant parses and flash; if we always passed through and the last save was `'tree'`, re-opening the modal would skip parsing and the Relation view would show “Cannot parse the schema”. Hence we **force `'outside'` only once when the modal opens** (see §6).
 
-| Function | Purpose | Loop Prevention |
-|----------|---------|-----------------|
-| `updateSchema(data: PassedSchema)` | Updates schema with source tracking | ✅ Via `data.source` |
-| `registerBlock(block: BlockInfo)` | Adds/updates blocks, handles title changes | ✅ Via idempotent sync |
-| `unregisterBlock(blockId)` | Removes blocks from registry | ✅ Via registry updates |
+---
 
-## Bidirectional Sync Flow
+## 4. Canvas → Schema (blocks drive type add/rename/remove)
 
-```ascii
-┌─────────────────┐    updateSchema()    ┌─────────────────┐
-│  UI Components  │ ──────────────────► │  Schema State   │
-│  (Visual Tree)  │ ◄────────────────── │   Provider      │
-└─────────────────┘   schema updates    └─────────────────┘
-        │                                        │
-        ▼                                        ▼
-┌─────────────────┐                    ┌─────────────────┐
-│ Block Registry  │                    │ GraphQL Editor  │
-│ Management      │                    │   (Code View)   │
-└─────────────────┘                    └─────────────────┘
-        │              Loop Prevention           │
-        │            via source tracking        │
-        └────────────────────────────────────────┘
-```
-
-## Loop Prevention Strategy
+When `nodes` change (add/rename/remove block), the app syncs schema so **type names and nodeIds** match blocks. Field contents are preserved.
 
 ```ascii
-┌─────────────────┐    source === 'code'?    ┌─────────────────┐
-│ updateSchema()  │ ──────────────────────► │ Skip tree regen │
-│   called        │         YES             │ (prevent loop)  │
-└─────────────────┘                         └─────────────────┘
-        │
-        ▼ NO
-┌─────────────────┐
-│ Proceed with    │
-│ type name sync  │
-│ and updates     │
-└─────────────────┘
+    nodes (state)
+         │
+         │  App.tsx useEffect([nodes, syncSchemaWithBlocks])
+         ▼
+    syncSchemaWithBlocks(blocks)
+         │
+         │  schemaState.tsx (must have schema.code in useCallback deps!)
+         │  parseSchemaToAST(schema.code) → change plan (add/rename/remove by nodeId)
+         │  applyChangePlan → generateSchemaFromAST → updateSchema({ source: 'outside', code })
+         ▼
+    schema state updated (source: 'outside')
 ```
 
-## Integration Examples
+**Important:** `syncSchemaWithBlocks` must depend on **schema.code** in its `useCallback` deps so it always reads the **latest** schema (including user edits in the modal). Otherwise adding a new block would overwrite with a stale schema and clear edited fields.
 
-### **App.tsx Integration**
-```typescript
-const { schema, updateSchema, registerBlock } = useSchemaState();
+---
 
-// Event node creation automatically registers blocks
-// Import/export uses schema state for persistence
-// Block title changes trigger schema updates
-```
+## 5. Schema Editor Modal → Schema (editor drives field content)
 
-### **SchemaEditorModal Integration**
-```typescript
-const { schema, updateSchema } = useSchemaState();
-
-// GraphQL Editor receives: { ...schema, source: 'outside' }
-// Editor changes trigger: updateSchema({ ...newSchema, source: 'code' })
-// Loop prevention: source='code' skips tree regeneration
-```
-
-## Unified Call Chain (Fixed Implementation)
-
-Both block creation and title updates now use the **same idempotent logic** to ensure consistent behavior:
-
-### **Block Creation Flow**
+When the user edits in the GraphQL editor (code pane or Visual/Relation), the editor calls `setSchema`; we pass that into `updateSchema` and store the new code and **source**.
 
 ```ascii
-┌─────────────────────────────────────────────────────────────────────┐
-│                      BLOCK CREATION CALL CHAIN                      │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  1. User clicks "Add Command/Event/View"                           │
-│     │                                                               │
-│     ▼                                                               │
-│  2. createBlock() → dispatch(ADD_NODE) → registerBlock()            │
-│     │                                                               │
-│     ▼                                                               │
-│  3. registerBlock() adds block to blockRegistry                    │
-│     │                                                               │
-│     ▼                                                               │
-│  4. useEffect([blockRegistry, schema.code]) triggers               │
-│     │                                                               │
-│     ▼                                                               │
-│  5. syncBlocksWithSchema(blockRegistry, schema.code)               │
-│     │                                                               │
-│     ▼                                                               │
-│  6. For each block: ensureBlockHasSchemaType(block, schema)        │
-│     │                                                               │
-│     ▼                                                               │
-│  ┌─────────────────────────────────────────────────────────────────┐│
-│  │  parseSchema(schema) → findTypeNames() → check if exists       ││
-│  │     │                                                           ││
-│  │     ├─── Type EXISTS → return schema unchanged                  ││
-│  │     │                                                           ││
-│  │     └─── Type MISSING → addMissingTypeToSchema()                ││
-│  │                        • Add minimal type definition            ││
-│  │                        • Add to Query/Mutation if needed       ││
-│  └─────────────────────────────────────────────────────────────────┘│
-│     │                                                               │
-│     ▼                                                               │
-│  7. If schema changed: setSchema({...prev, code: newSchema})       │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+    GraphQLEditor (graphql-editor)
+         │
+         │  User edits in Code pane   → setSchema({ code, source: 'code' })
+         │  User edits in Relation    → setSchema({ code, source: 'tree' })
+         ▼
+    SchemaEditorModal setSchema callback
+         │
+         │  updateSchema(newSchema)
+         ▼
+    schemaState.tsx updateSchema(data)
+         │
+         │  source = (data.source === 'code' || data.source === 'tree') ? data.source : 'outside'
+         │  setSchema({ ...data, source })
+         ▼
+    schema state updated (source preserved when from editor)
 ```
 
-### **Title Update Flow**
+We **preserve** `source` when it is `'code'` or `'tree'` so that graphql-editor can avoid redundant `generateTreeFromSchema` when the update came from itself.
+
+---
+
+## 6. Schema → Schema Editor Modal: what we pass in, and when
+
+The modal receives `schema` from context and passes **stableSchema** into `GraphQLEditor`. The editor uses **schema.source** to decide whether to run `generateTreeFromSchema(schema)`:
+
+- **source === 'outside'** → editor runs `generateTreeFromSchema(schema)` (parse and build tree).
+- **source === 'tree'** → editor **skips** (avoids re-parsing after its own tree→code update).
+
+So:
+
+- If we **always** passed `source: 'outside'`, every editor update would trigger a re-parse and cause flash.
+- If we **always** passed through `schema.source`, then after the user edited in the **Visual** view we’d store `source: 'tree'`. When they **close and re-open** the modal, we’d pass `source: 'tree'` again, the editor would **skip** parsing, and the Relation view would show “Cannot parse the schema”.
+
+Hence we need **modal mount timing**:
 
 ```ascii
-┌─────────────────────────────────────────────────────────────────────┐
-│                     TITLE UPDATE CALL CHAIN                         │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  1. User edits block title inline                                  │
-│     │                                                               │
-│     ▼                                                               │
-│  2. dispatch(UPDATE_NODE_LABEL) → updates node state               │
-│     │                                                               │
-│     ▼                                                               │
-│  3. Components detect state change via useEffect hooks             │
-│     │                                                               │
-│     ▼                                                               │
-│  4. SAME useEffect([blockRegistry, schema.code]) triggers          │
-│     │                                                               │
-│     ▼                                                               │
-│  5. SAME syncBlocksWithSchema(blockRegistry, schema.code)          │
-│     │                                                               │
-│     ▼                                                               │
-│  6. SAME ensureBlockHasSchemaType() logic                          │
-│     │   • Checks if types for new title exist                      │
-│     │   • Adds missing types if needed                             │
-│     │   • Preserves existing custom fields                         │
-│     ▼                                                               │
-│  7. If schema changed: setSchema({...prev, code: newSchema})       │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+    Modal closed    hasPassedOutsideForThisOpenRef = false
+         │
+         │  User opens modal (isOpen = true)
+         ▼
+    First render (modal open)
+         │  ref still false → forceOutsideOnce = true → pass source: 'outside'
+         │  Editor runs generateTreeFromSchema → Relation view parses and renders
+         ▼
+    useEffect([isOpen]) runs → hasPassedOutsideForThisOpenRef = true
+         │
+         │  Subsequent renders (user edits, etc.) → pass schema.source ('code'/'tree')
+         │  No redundant generateTreeFromSchema, no flash
+         ▼
+    User closes modal → useEffect sets ref = false (ready for next open)
 ```
-
-### **Key Improvements**
-
-**✅ True Idempotency:**
-- Same logic for both block creation and title updates
-- Checks if type exists before making any changes
-- Only modifies schema when absolutely necessary
-
-**✅ Data Preservation:**
-- Never destroys existing custom GraphQL fields
-- Preserves comments, complex types, and developer customizations
-- Only adds missing types with minimal structure
-
-**✅ Consistent Behavior:**
-- Predictable outcomes regardless of trigger
-- Single unified flow for all block operations
-- Developer-friendly approach to schema management
-
-**✅ Simplified Architecture:**
-- Removed complex `updateBlockTitle()` function
-- Single path through `registerBlock()` for all block changes
-- Eliminated duplicate type creation issues
-
-### **Detailed Steps**
-
-1. **Block Registration**: `registerBlock()` updates the block registry (handles both new blocks and title changes)
-2. **Dependency Trigger**: `useEffect()` detects registry changes and calls `syncBlocksWithSchema()`
-3. **Idempotent Sync**: For each block, `ensureBlockHasSchemaType()` checks if corresponding GraphQL type exists
-4. **Conditional Addition**: Only missing types are added via `addMissingTypeToSchema()`
-5. **Schema Update**: If any changes were made, `updateSchema()` triggers GraphQL Editor re-render
-
-### **Before vs After Comparison**
-
-| Aspect | Before (Complex) | After (Simplified) |
-|--------|------------------|-------------------|
-| **Block Creation** | `registerBlock()` → sync | `registerBlock()` → sync |
-| **Title Updates** | `updateBlockTitle()` → complex renaming | `registerBlock()` → sync |
-| **Architecture** | Two separate flows | Single unified flow |
-| **Duplicate Types** | ❌ Possible conflicts | ✅ Prevented by idempotency |
-| **Custom Fields** | ✅ Preserved | ✅ Always preserved |
-| **Behavior** | ❌ Two different paths | ✅ Consistent single path |
-| **Developer UX** | ❌ Complex debugging | ✅ Simple and predictable |
-
-### **GraphQL Editor Reflection**
-
-In both scenarios, the GraphQL Editor automatically reflects changes because:
 
 ```ascii
-┌─────────────────────────────────────────────────────────────────────┐
-│                   GRAPHQL EDITOR AUTO-REFLECTION                    │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  SchemaEditorModal Component:                                       │
-│                                                                     │
-│  const { schema } = useSchemaState();                               │
-│                                                                     │
-│  <GraphQLEditor                                                     │
-│    schema={{                                                        │
-│      code: schema.code,        ← Always current schema             │
-│      libraries: schema.libraries,                                  │
-│      source: 'outside'         ← Indicates external update         │
-│    }}                                                               │
-│    setSchema={(newSchema) => {                                      │
-│      updateSchema(newSchema);  ← Passes through source from editor │
-│    }}                                                               │
-│  />                                                                 │
-│                                                                     │
-│  • React's state updates automatically re-render the editor        │
-│  • GraphQL Editor receives new schema prop and updates display     │
-│  • Source tracking prevents loops when editor makes changes        │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+    ┌──────────────┐     open      ┌──────────────────────────────────────┐
+    │ Modal closed │ ────────────► │ First pass: source = 'outside'        │
+    │ ref = false  │                │ Editor: generateTreeFromSchema()     │
+    └──────────────┘                │ Relation view: parses, shows graph   │
+                                    └─────────────────┬────────────────────┘
+                                                      │
+                                    effect: ref = true
+                                                      │
+                                                      ▼
+                                    ┌──────────────────────────────────────┐
+                                    │ Later passes: source = schema.source │
+                                    │ ('code' | 'tree')                     │
+                                    │ Editor: no re-parse, no flash        │
+                                    └──────────────────────────────────────┘
 ```
 
-## Current Implementation Details
+---
 
-### **Missing Type Addition Strategy**
+## 7. Normalization (round-trip) before passing to editor
 
-The current implementation uses a **simple additive approach** when synchronizing blocks with the GraphQL schema:
-
-```typescript
-// Current behavior in ensureBlockHasSchemaType()
-const typeNames = findTypeNames(parsedSchema);
-const expectedTypeName = toCamelCase(block.title);
-
-if (!typeNames.includes(expectedTypeName)) {
-  // Add missing type with minimal structure
-  const newSchema = addMissingTypeToSchema(schema, block);
-  return newSchema;
-}
-```
-
-**Key Characteristics:**
-- **Additive Only**: Only adds missing types, never modifies existing ones
-- **Name-Based Matching**: Uses `toCamelCase(block.title)` to find corresponding GraphQL types
-- **No Tracking**: Cannot track which GraphQL type corresponds to which visual block ID
-- **Rename Limitation**: When block titles change, new types are created instead of renaming existing ones
-
-**Example Scenario:**
-1. Create block "User Registration" → Generates `UserRegistration` type
-2. Rename block to "User Signup" → Generates new `UserSignup` type
-3. Result: Both types exist in schema, no connection to original block
-
-### **Current Sync Flow**
+Schema saved after editing in the **Visual** view can sometimes be in a form that graphql-editor’s worker fails to parse when the modal is re-opened. We **normalize** by round-tripping through our parser/generator so the string we pass is parseable:
 
 ```ascii
-┌─────────────────────────────────────────────────────────────────────┐
-│                    CURRENT IMPLEMENTATION                           │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  Block Title Change: "User Registration" → "User Signup"           │
-│                                                                     │
-│  1. registerBlock({ id: "abc123", title: "User Signup" })          │
-│     │                                                               │
-│     ▼                                                               │
-│  2. syncBlocksWithSchema() checks for "UserSignup" type            │
-│     │                                                               │
-│     ▼                                                               │
-│  3. findTypeNames() returns: ["UserRegistration", ...]             │
-│     │                                                               │
-│     ▼                                                               │
-│  4. "UserSignup" not found → addMissingTypeToSchema()              │
-│     │                                                               │
-│     ▼                                                               │
-│  5. Schema now has BOTH "UserRegistration" AND "UserSignup"        │
-│                                                                     │
-│  ❌ Problem: No way to know "UserRegistration" should be removed    │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+    schema.code (from state)
+         │
+         │  try: parseSchemaToAST(code) → generateSchemaFromAST(ast)
+         │  success → use generated code; fail → use original
+         ▼
+    stableSchema.code (passed to GraphQLEditor)
 ```
 
-## Future Iterations
+We use the same `graphql-ast-utils` (graphql-js-tree) as the editor worker.
 
-### **Custom Directive Approach for Precise Tracking**
+---
 
-The next major enhancement will implement **custom GraphQL directives** to maintain bidirectional mapping between visual blocks and schema types:
+## 8. Summary table
+
+| Event                    | Who writes schema     | source stored   | Next time modal opens      |
+|--------------------------|------------------------|-----------------|----------------------------|
+| User edits in Code pane  | Editor → updateSchema  | `'code'`        | We force `'outside'` once  |
+| User edits in Relation   | Editor → updateSchema  | `'tree'`        | We force `'outside'` once  |
+| Add/rename/remove block  | syncSchemaWithBlocks   | `'outside'`     | We force `'outside'` once  |
+| Import / paste           | App → updateSchema     | `'outside'`     | We force `'outside'` once  |
+
+So: **on first render after opening the modal we always pass source `'outside'` once**, then pass through `schema.source` so editor state doesn’t trigger redundant re-parses.
+
+---
+
+## 9. Current implementation: nodeId-based sync and directive
+
+The app uses a **custom directive** to tie schema types to canvas blocks so we can **rename** (not only add) and remove orphaned types.
 
 ```graphql
-# Future implementation with custom directives
 directive @eventModelingBlock(
   nodeId: String!
   blockType: String!
@@ -334,88 +207,59 @@ type UserRegistration @eventModelingBlock(
 ) {
   id: ID!
   email: String!
-  password: String!
 }
 ```
 
-### **Enhanced Architecture Goals**
+**Block → schema sync (syncSchemaWithBlocks):**
 
 ```ascii
-┌─────────────────────────────────────────────────────────────────────┐
-│                      FUTURE ARCHITECTURE                            │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  Block Title Change: "User Registration" → "User Signup"           │
-│                                                                     │
-│  1. registerBlock({ id: "abc123", title: "User Signup" })          │
-│     │                                                               │
-│     ▼                                                               │
-│  2. findTypeByNodeId("abc123") → finds "UserRegistration"          │
-│     │                                                               │
-│     ▼                                                               │
-│  3. renameTypeInSchema("UserRegistration" → "UserSignup")          │
-│     │                                                               │
-│     ▼                                                               │
-│  4. Update @eventModelingBlock directive with new metadata          │
-│     │                                                               │
-│     ▼                                                               │
-│  5. Schema has ONLY "UserSignup" with preserved custom fields      │
-│                                                                     │
-│  ✅ Solution: Precise tracking and renaming capability             │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+  blocks (from nodes)     parseSchemaToAST(schema.code)
+         │                            │
+         ▼                            ▼
+  collectBlockChanges(blocks, ast) → change plan
+         │  typesToAdd, typesToRename, typesToRemove (by nodeId)
+         ▼
+  addOrphanedTypesToPlan (findOrphanedTypes uses extractBaseNodeId so
+         │  composite nodeIds like block-123-input are not wrongly removed)
+         ▼
+  applyChangePlan: applyRenames → applyAdditions → applyRemovals
+         │
+         ▼
+  generateSchemaFromAST → updateSchema({ source: 'outside', code })
 ```
 
-### **Future Implementation Benefits**
+- **Rename**: same block id, title changed → typesToRename (oldName → newName by nodeId); `renameTypeInAST` preserves fields.
+- **Orphan removal**: `findOrphanedTypes` uses **base** nodeId (e.g. `block-123` from `block-123-input`) so command Input/Result types are not removed while the block is active.
 
-**🎯 Precise Block-Type Mapping:**
-- Each GraphQL type linked to specific visual block via `nodeId`
-- Enables true rename operations instead of add-only behavior
-- Maintains data integrity during block modifications
+---
 
-**🔄 Bidirectional Synchronization:**
-- Changes in GraphQL Editor can update visual block properties
-- Block metadata stored in schema via custom directives
-- Version tracking for schema evolution
+## 10. Loop prevention (summary)
 
-**🧹 Automatic Cleanup:**
-- Remove orphaned types when blocks are deleted
-- Detect and resolve naming conflicts
-- Maintain schema cleanliness over time
-
-**📊 Enhanced Metadata:**
-```graphql
-directive @eventModelingBlock(
-  nodeId: String!           # Visual block unique identifier
-  blockType: String!        # "command" | "event" | "view"
-  version: Int             # Schema version for migrations
-) on OBJECT | INPUT_OBJECT
+```ascii
+┌─────────────────┐    source === 'code'|'tree'?   ┌─────────────────┐
+│ updateSchema()  │ ─────────────────────────────► │ Pass through     │
+│   called        │         YES (from editor)       │ source; editor   │
+└─────────────────┘                                 │ can skip re-parse│
+        │                                           └─────────────────┘
+        ▼ NO (app: sync / import / paste)
+┌─────────────────┐
+│ Store source:   │
+│ 'outside'       │
+└─────────────────┘
 ```
 
-### **Migration Strategy**
+Modal side: first pass after open forces `'outside'` so Relation view parses; later passes use stored `schema.source` to avoid flash.
 
-**Phase 1: Directive Infrastructure**
-- Implement custom directive parsing and generation
-- Add directive support to schema utilities
-- Maintain backward compatibility with current approach
+---
 
-**Phase 2: Enhanced Sync Logic**
-- Replace name-based matching with nodeId-based tracking
-- Implement type renaming capabilities
-- Add orphaned type cleanup
+## 11. Key files
 
-**Phase 3: Advanced Features**
-- Bidirectional property synchronization
-- Visual layout information in schema
-- Schema version management and migrations
+| File | Role |
+|------|------|
+| `src/state/schemaState.tsx` | Schema state, `updateSchema` (preserve source), `syncSchemaWithBlocks` (depends on schema.code), nodeId-based change plan |
+| `src/components/SchemaEditorModal.tsx` | `stableSchema` (normalize + force `outside` once via ref), passes schema to GraphQLEditor |
+| `src/components/SchemaEditorModalManager.tsx` | Modal open/close state, passes currentNodes to modal |
+| `src/App.tsx` | Calls `syncSchemaWithBlocks(blocks)` when `nodes` change |
+| `src/graphql-ast-utils.ts` | parseSchemaToAST, generateSchemaFromAST, renameTypeInAST, findOrphanedTypes (base nodeId), etc. |
 
-## Key Benefits
-
-- **🎯 Loop Prevention**: Uses GraphQL Editor's built-in source tracking
-- **🔧 Type Safety**: Standardized `PassedSchema` interface
-- **⬅️ Backward Compatibility**: Supports old and new export formats
-- **🚀 Clean Integration**: Aligns with GraphQL Editor patterns
-- **📝 Current Simplicity**: Additive-only approach prevents data loss
-- **🔮 Future Precision**: Custom directives will enable exact block-type tracking
-
-The schema state provides a robust, centralized solution for managing bidirectional synchronization between visual event modeling and GraphQL schema editing with automatic loop prevention. The current implementation prioritizes data preservation through additive operations, while future iterations will add precise tracking and renaming capabilities.
+See also: `docs/GRAPHQL_SCHEMA_EDITOR_FLASH_ANALYSIS.md` for the original flash and source-handling analysis.
