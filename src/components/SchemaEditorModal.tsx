@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useMemo } from 'react';
 import { GraphQLEditor } from 'graphql-editor';
 import type { ExternalEditorAPI, PassedSchema } from 'graphql-editor';
 import { useSchemaState } from '../state/schemaState';
+import { parseSchemaToAST, generateSchemaFromAST } from '../graphql-ast-utils';
 import { findTypeNames, parseSchema } from '../utils/schemaPreservation';
 import { toCamelCase } from '../utils/stringUtils';
 import { BlockInfo } from '../types/schema';
@@ -44,18 +45,59 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
 }) => {
   const { schema, updateSchema, syncSchemaWithBlocks } = useSchemaState();
   const editorRef = useRef<ExternalEditorAPI>(null);
+  // When modal just opened we pass source 'outside' once so the editor runs generateTreeFromSchema
+  // and the Relation view parses. After that we pass through schema.source. Ref stays false until
+  // after the first render when open, then we set it true; when modal closes we reset to false.
+  const hasPassedOutsideForThisOpenRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      hasPassedOutsideForThisOpenRef.current = false;
+    } else {
+      hasPassedOutsideForThisOpenRef.current = true;
+    }
+  }, [isOpen]);
 
-  // Stable schema reference: only change when code/libraries/source change, so graphql-editor
-  // does not run generateTreeFromSchema on every parent re-render (avoids flash).
-  // Pass through schema.source so the editor can skip regeneration when source === "tree".
-  const stableSchema = useMemo<PassedSchema>(
-    () => ({
-      code: schema.code,
+  // Stable schema reference: only change when code/libraries/source or open-state change.
+  // Normalize schema by round-tripping through our parser/generator so the Relation view can
+  // always parse it when the modal is re-opened.
+  const stableSchema = useMemo<PassedSchema>(() => {
+    let code = schema.code;
+    try {
+      if (code && code.trim()) {
+        const ast = parseSchemaToAST(code);
+        if (ast?.nodes && ast.nodes.length > 0) {
+          const generated = generateSchemaFromAST(ast);
+          code = generated;
+          console.log('[DEBUG-SCHEMA-NORMALIZE] Round-trip OK, normalized schema for editor', { nodeCount: ast.nodes.length, codeLength: generated.length });
+        } else {
+          console.log('[DEBUG-SCHEMA-NORMALIZE] Parse OK but empty AST, passing through', { codeLength: code.length });
+        }
+      } else {
+        console.log('[DEBUG-SCHEMA-NORMALIZE] Empty or whitespace schema, passing through');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const snippet = code.length > 300 ? `${code.slice(0, 150)}...${code.slice(-150)}` : code;
+      console.warn('[DEBUG-SCHEMA-NORMALIZE] Normalize failed, passing original schema to editor', {
+        error: message,
+        codeLength: code.length,
+        snippet,
+      });
+      if (err instanceof Error && err.stack) {
+        console.warn('[DEBUG-SCHEMA-NORMALIZE] Stack:', err.stack);
+      }
+    }
+    // First time after opening (hasPassedOutsideForThisOpenRef false): pass 'outside' so the
+    // editor parses and Relation view renders. Then pass through schema.source so editor edits
+    // don't trigger redundant generateTreeFromSchema.
+    const forceOutsideOnce = isOpen && !hasPassedOutsideForThisOpenRef.current;
+    const source = forceOutsideOnce ? 'outside' : (schema.source ?? 'outside');
+    return {
+      code,
       libraries: schema.libraries ?? DEFAULT_LIBRARIES,
-      source: schema.source ?? 'outside',
-    }),
-    [schema.code, schema.libraries, schema.source]
-  );
+      source,
+    };
+  }, [schema.code, schema.libraries, schema.source, isOpen]);
   
   // Log when modal opens
   useEffect(() => {
