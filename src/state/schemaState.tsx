@@ -225,13 +225,17 @@ export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [schema, setSchema] = useState<PassedSchema>(defaultSchema);
   const [schemaRenameNotification, setSchemaRenameNotification] = useState<string | null>(null);
 
-  // Function to update the schema
+  // Function to update the schema.
+  // Preserve editor-originated source ("code" | "tree") so graphql-editor can skip
+  // redundant generateTreeFromSchema when source === "tree". App-driven updates
+  // (syncSchemaWithBlocks, import, paste) pass source: "outside" and keep full control.
   const updateSchema = useCallback((data: PassedSchema) => {
     console.log('[DEBUG] updateSchema called with source:', data.source);
     console.log('[DEBUG] updateSchema called with data:', data);
+    const source = (data.source === 'code' || data.source === 'tree') ? data.source : 'outside';
     setSchema({
       ...data,
-      source: "outside"
+      source,
     });
     
     // Clear rename notification when schema is updated

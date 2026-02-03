@@ -1,10 +1,18 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { GraphQLEditor } from 'graphql-editor';
 import type { ExternalEditorAPI, PassedSchema } from 'graphql-editor';
 import { useSchemaState } from '../state/schemaState';
 import { findTypeNames, parseSchema } from '../utils/schemaPreservation';
 import { toCamelCase } from '../utils/stringUtils';
 import { BlockInfo } from '../types/schema';
+
+const DEFAULT_LIBRARIES = `
+directive @eventModelingBlock(
+  nodeId: String!
+  blockType: String!
+  version: Int
+) on OBJECT | INPUT_OBJECT
+`;
 
 // Utility function to convert React Flow nodes to BlockInfo
 const convertNodesToBlocks = (nodes: any[]): BlockInfo[] => {
@@ -36,6 +44,18 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
 }) => {
   const { schema, updateSchema, syncSchemaWithBlocks } = useSchemaState();
   const editorRef = useRef<ExternalEditorAPI>(null);
+
+  // Stable schema reference: only change when code/libraries/source change, so graphql-editor
+  // does not run generateTreeFromSchema on every parent re-render (avoids flash).
+  // Pass through schema.source so the editor can skip regeneration when source === "tree".
+  const stableSchema = useMemo<PassedSchema>(
+    () => ({
+      code: schema.code,
+      libraries: schema.libraries ?? DEFAULT_LIBRARIES,
+      source: schema.source ?? 'outside',
+    }),
+    [schema.code, schema.libraries, schema.source]
+  );
   
   // Log when modal opens
   useEffect(() => {
@@ -169,17 +189,7 @@ export const SchemaEditorModal: React.FC<SchemaEditorModalProps> = ({
           <div style={{ height: '100%', overflow: 'visible' }}>
             <GraphQLEditor
               ref={editorRef}
-              schema={{
-                code: schema.code,
-                libraries: schema.libraries || `
-directive @eventModelingBlock(
-  nodeId: String!
-  blockType: String!
-  version: Int
-) on OBJECT | INPUT_OBJECT
-`,
-                source: 'outside' as const,
-              }}
+              schema={stableSchema}
               setSchema={(newSchema: PassedSchema) => {
                 // Update schema with source tracking to prevent infinite loops
                 updateSchema(newSchema);
