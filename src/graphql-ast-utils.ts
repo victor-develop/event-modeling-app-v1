@@ -377,7 +377,9 @@ export const removeTypeFromAST = (ast: ParserTree, typeName: string): ParserTree
 };
 
 /**
- * Find orphaned types (types with eventModelingBlock directive but no corresponding active block)
+ * Find orphaned types (types with eventModelingBlock directive but no corresponding active block).
+ * Uses extractBaseNodeId so composite nodeIds (e.g. block-123-input, block-123-result) are
+ * considered part of the same block (block-123) and not removed when that block is active.
  */
 export const findOrphanedTypes = (ast: ParserTree, activeBlocks: BlockInfo[]): ParserField[] => {
   if (!ast.nodes) return [];
@@ -403,8 +405,11 @@ export const findOrphanedTypes = (ast: ParserTree, activeBlocks: BlockInfo[]): P
             const argValue = getDirectiveArgumentValue(nodeIdArg);
             const rawValue = nodeIdArg.value?.value || argValue;
             const nodeIdValue = rawValue || argValue;
-            if (nodeIdValue && !activeNodeIds.has(nodeIdValue)) {
-              orphanedTypes.push(node);
+            if (nodeIdValue) {
+              const baseNodeId = extractBaseNodeId(nodeIdValue);
+              if (!activeNodeIds.has(baseNodeId)) {
+                orphanedTypes.push(node);
+              }
             }
           }
         }

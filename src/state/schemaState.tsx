@@ -244,7 +244,9 @@ export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [schemaRenameNotification]);
 
-  // Function to sync schema with blocks using nodeId-based logic only
+  // Function to sync schema with blocks using nodeId-based logic only.
+  // Depends on schema.code so we always read the latest schema (including user edits);
+  // otherwise adding a new block would overwrite with a stale schema and clear edited fields.
   const syncSchemaWithBlocks = useCallback((blocks: BlockInfo[]) => {
     console.log('[DEBUG] ===== syncSchemaWithBlocks called =====');
     console.log('[DEBUG] Current blocks:', blocks);
@@ -272,7 +274,6 @@ export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         
         const updatedAST = applyChangePlan(ast, changePlan);
         const updatedSchemaCode = generateSchemaFromAST(updatedAST);
-        debugger
         updateSchema({
           source: 'outside',
           code: updatedSchemaCode
@@ -281,11 +282,10 @@ export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         console.log('[DEBUG] No changes needed, schema is up to date');
       }
     } catch (error) {
-      debugger;
       console.error('[ERROR] NodeId-based sync failed:', error);
       // No fallback - fail fast if nodeId sync doesn't work
     }
-  }, [updateSchema]);
+  }, [updateSchema, schema.code]);
 
   // Function to get the schema AST
   const getSchemaAST = useCallback(() => {
