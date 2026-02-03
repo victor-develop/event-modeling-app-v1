@@ -321,13 +321,13 @@ The next major enhancement will implement **custom GraphQL directives** to maint
 
 ```graphql
 # Future implementation with custom directives
-directive @eventBlock(
+directive @eventModelingBlock(
   nodeId: String!
   blockType: String!
   version: Int
 ) on OBJECT | INPUT_OBJECT
 
-type UserRegistration @eventBlock(
+type UserRegistration @eventModelingBlock(
   nodeId: "abc123"
   blockType: "command"
   version: 1
@@ -356,7 +356,7 @@ type UserRegistration @eventBlock(
 │  3. renameTypeInSchema("UserRegistration" → "UserSignup")          │
 │     │                                                               │
 │     ▼                                                               │
-│  4. Update @eventBlock directive with new metadata                 │
+│  4. Update @eventModelingBlock directive with new metadata          │
 │     │                                                               │
 │     ▼                                                               │
 │  5. Schema has ONLY "UserSignup" with preserved custom fields      │
@@ -385,12 +385,10 @@ type UserRegistration @eventBlock(
 
 **📊 Enhanced Metadata:**
 ```graphql
-directive @eventBlock(
+directive @eventModelingBlock(
   nodeId: String!           # Visual block unique identifier
   blockType: String!        # "command" | "event" | "view"
   version: Int             # Schema version for migrations
-  position: String         # Visual position for layout sync
-  color: String            # Visual styling information
 ) on OBJECT | INPUT_OBJECT
 ```
 

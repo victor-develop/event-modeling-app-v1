@@ -1,8 +1,9 @@
 import React, { createContext, useCallback, useContext, useState } from 'react';
 import { PassedSchema } from 'graphql-editor';
 import { BlockInfo } from '../types/schema';
-import { parseSchema, findTypeNames } from '../utils/schemaPreservation';
+import { parseSchemaToAST, generateSchemaFromAST, addTypeToAST, findRelatedTypes, renameTypeInAST, removeTypeFromAST, getDirectiveArgumentValue, DIRECTIVE_NAMES, NODEID_SUFFIXES, findOrphanedTypes } from '../graphql-ast-utils';
 import { toCamelCase } from '../utils/stringUtils';
+import { ParserTree, ParserField } from 'graphql-js-tree';
 
 // Define the schema state interface
 interface SchemaState {
@@ -10,8 +11,7 @@ interface SchemaState {
   schemaRenameNotification: string | null;
   updateSchema: (data: PassedSchema) => void;
   syncSchemaWithBlocks: (blocks: BlockInfo[]) => void;
-  generateSchema: (blocks: BlockInfo[]) => string;
-  getSchemaAST: () => ReturnType<typeof parseSchema>;
+  getSchemaAST: () => ParserTree;
 }
 
 const defaultSchema: PassedSchema = {
@@ -32,165 +32,80 @@ const TYPE_SUFFIXES = {
 } as const;
 
 
-// Helper function to generate type definition for a specific type name
-const generateTypeDefinition = (typeName: string, blockType: string): string => {
-  switch (blockType) {
-    case 'command':
-      if (typeName.endsWith(TYPE_SUFFIXES.INPUT)) {
-        return `input ${typeName} {
-  # Define command parameters here
-  id: ID!
-}`;
-      } else if (typeName.endsWith(TYPE_SUFFIXES.COMMAND_RESULT)) {
-        return `type ${typeName} {
-  # Define command result here
-  success: Boolean!
-  message: String
-}`;
-      }
-      break;
-    case 'event':
-      return `type ${typeName} {
-  # Define event payload here
-  id: ID!
-  timestamp: String!
-}`;
-    case 'view':
-      return `type ${typeName} {
-  # Define view structure here
-  id: ID!
-}`;
+// Helper function to generate composite nodeId based on type role
+
+
+
+
+
+
+// Enhanced nodeId-based sync functions
+
+
+// Define change plan interface
+interface SchemaChangePlan {
+  typesToAdd: Array<{ typeName: string; blockType: string; nodeId: string }>;
+  typesToRename: Array<{ oldName: string; newName: string; nodeId: string }>;
+  typesToRemove: string[];
+}
+
+// Helper functions for functional approach
+const collectBlockChanges = (blocks: BlockInfo[], ast: ParserTree): SchemaChangePlan => 
+  blocks.reduce((plan, block) => {
+    const blockChanges = analyzeBlockSchemaChanges(block, ast);
+    return {
+      typesToAdd: [...plan.typesToAdd, ...blockChanges.typesToAdd],
+      typesToRename: [...plan.typesToRename, ...blockChanges.typesToRename],
+      typesToRemove: plan.typesToRemove
+    };
+  }, { typesToAdd: [], typesToRename: [], typesToRemove: [] } as SchemaChangePlan);
+
+const addOrphanedTypesToPlan = (plan: SchemaChangePlan, ast: ParserTree, blocks: BlockInfo[]): SchemaChangePlan => {
+  const orphanedTypes = findOrphanedTypes(ast, blocks);
+  const orphanedTypeNames = orphanedTypes.map(type => type.name);
+  
+  if (orphanedTypeNames.length > 0) {
+    console.log(`[DEBUG] Found ${orphanedTypeNames.length} orphaned types:`, orphanedTypeNames);
   }
-  return '';
+  
+  return {
+    ...plan,
+    typesToRemove: [...plan.typesToRemove, ...orphanedTypeNames]
+  };
 };
 
+const applyRenames = (ast: ParserTree, renames: Array<{ oldName: string; newName: string; nodeId: string }>): ParserTree =>
+  renames.reduce((currentAST, rename) => {
+    console.log(`[DEBUG] Renaming type: ${rename.oldName} -> ${rename.newName}`);
+    return renameTypeInAST(currentAST, rename.oldName, rename.newName);
+  }, ast);
 
-// Helper function to generate operation field for a block
-const generateOperationField = (block: BlockInfo): string => {
-  const typeName = toCamelCase(block.title);
-  
-  switch (block.type) {
-    case 'command':
-      return `  ${typeName}(input: ${typeName}${TYPE_SUFFIXES.INPUT}!): ${typeName}${TYPE_SUFFIXES.COMMAND_RESULT}!`;
-    case 'view':
-      return `  ${typeName}(id: ID!): ${typeName}`;
-    default:
-      return '';
-  }
+const applyAdditions = (ast: ParserTree, additions: Array<{ typeName: string; blockType: string; nodeId: string }>): ParserTree =>
+  additions.reduce((currentAST, addition) => {
+    console.log(`[DEBUG] Adding type: ${addition.typeName} (${addition.blockType})`);
+    return addTypeToAST(currentAST, addition.typeName, addition.blockType, addition.nodeId);
+  }, ast);
+
+const applyRemovals = (ast: ParserTree, removals: string[]): ParserTree =>
+  removals.reduce((currentAST, typeName) => {
+    console.log(`[DEBUG] Removing orphaned type: ${typeName}`);
+    return removeTypeFromAST(currentAST, typeName);
+  }, ast);
+
+const applyChangePlan = (ast: ParserTree, plan: SchemaChangePlan): ParserTree => {
+  const withRenames = applyRenames(ast, plan.typesToRename);
+  const withAdditions = applyAdditions(withRenames, plan.typesToAdd);
+  return applyRemovals(withAdditions, plan.typesToRemove);
 };
 
-
-// Helper function to add missing types to existing schema
-const addMissingTypeToSchema = (currentSchema: string, block: BlockInfo): string => {
-  const requiredTypeNames = getBlockTypeNames(block);
-  
-  let newTypeDefinition = '';
-  let newOperationField = '';
-  
-  try {
-    const ast = parseSchema(currentSchema);
-    const existingTypes = findTypeNames(ast);
-    const missingTypes = requiredTypeNames.filter(name => !existingTypes.includes(name));
-    
-    console.log(`[DEBUG] Adding missing types for ${block.title}:`, missingTypes);
-    
-    if (missingTypes.length === 0) {
-      return currentSchema; // Nothing to add
-    }
-    
-    // Generate type definitions for missing types
-    const newTypeDefinitions: string[] = [];
-    
-    missingTypes.forEach(typeName => {
-      const typeDefinition = generateTypeDefinition(typeName, block.type);
-      if (typeDefinition) {
-        newTypeDefinitions.push(typeDefinition);
-      }
-    });
-    
-    // Generate operation field if the main type is missing
-    const mainTypeName = toCamelCase(block.title);
-    if (missingTypes.includes(mainTypeName) && (block.type === 'command' || block.type === 'view')) {
-      newOperationField = generateOperationField(block);
-    }
-    
-    newTypeDefinition = newTypeDefinitions.join('\n\n');
-  } catch (error) {
-    console.error('[DEBUG] Error parsing schema for missing types, adding all:', error);
-    // Fallback: generate all types for the block
-    const allTypeNames = getBlockTypeNames(block);
-    const newTypeDefinitions: string[] = [];
-    
-    allTypeNames.forEach(typeName => {
-      const typeDefinition = generateTypeDefinition(typeName, block.type);
-      if (typeDefinition) {
-        newTypeDefinitions.push(typeDefinition);
-      }
-    });
-    
-    newTypeDefinition = newTypeDefinitions.join('\n\n');
-    
-    if (block.type === 'command' || block.type === 'view') {
-      newOperationField = generateOperationField(block);
-    }
-  }
-  
-  // If schema is empty, create basic structure
-  if (!currentSchema.trim()) {
-    let schema = newTypeDefinition + '\n\n';
-    if (block.type === 'view') {
-      schema += `type Query {\n${newOperationField}\n}\n\n`;
-    } else if (block.type === 'command') {
-      schema += `type Mutation {\n${newOperationField}\n}`;
-    }
-    return schema;
-  }
-  
-  // Add type definitions to existing schema
-  let updatedSchema = currentSchema;
-  
-  if (newTypeDefinition) {
-    // Add the new type definitions at the end of existing types
-    const queryIndex = updatedSchema.indexOf('type Query');
-    const mutationIndex = updatedSchema.indexOf('type Mutation');
-    const insertIndex = Math.min(
-      queryIndex === -1 ? updatedSchema.length : queryIndex,
-      mutationIndex === -1 ? updatedSchema.length : mutationIndex
-    );
-    
-    updatedSchema = updatedSchema.slice(0, insertIndex) + 
-      newTypeDefinition + '\n\n' + 
-      updatedSchema.slice(insertIndex);
-  }
-  
-  // Add operation field if needed
-  if (newOperationField) {
-    if (block.type === 'view') {
-      // Add to Query type
-      if (updatedSchema.includes('type Query')) {
-        updatedSchema = updatedSchema.replace(
-          /(type Query\s*{[^}]*)(})/,
-          `$1${newOperationField}\n$2`
-        );
-      } else {
-        updatedSchema += `\ntype Query {\n${newOperationField}\n}`;
-      }
-    } else if (block.type === 'command') {
-      // Add to Mutation type
-      if (updatedSchema.includes('type Mutation')) {
-        updatedSchema = updatedSchema.replace(
-          /(type Mutation\s*{[^}]*)(})/,
-          `$1${newOperationField}\n$2`
-        );
-      } else {
-        updatedSchema += `\ntype Mutation {\n${newOperationField}\n}`;
-      }
-    }
-  }
-  
-  console.log('[DEBUG] Updated schema with missing types:', updatedSchema);
-  return updatedSchema;
+// Functional composition helper
+const pipe = function<T>(value: T) {
+  return {
+    to: function<U>(fn: (arg: T) => U) { return pipe(fn(value)); },
+    value: () => value
+  };
 };
+
 
 // Centralized mapping between block types and their generated GraphQL type names
 const getBlockTypeNames = (block: BlockInfo): string[] => {
@@ -212,106 +127,112 @@ const getBlockTypeNames = (block: BlockInfo): string[] => {
   }
 };
 
-// Unified idempotent function to ensure block has corresponding schema type
-const ensureBlockHasSchemaType = (block: BlockInfo, currentSchema: string, processedBlocks: Set<string>, setProcessedBlocks: React.Dispatch<React.SetStateAction<Set<string>>>): string => {
+// Generate the correct nodeId for a specific type within a block
+const getNodeIdForType = (block: BlockInfo, typeName: string): string => {
+  const baseTypeName = toCamelCase(block.title);
+  
+  if (block.type === 'command') {
+    if (typeName === `${baseTypeName}${TYPE_SUFFIXES.INPUT}`) {
+      return `${block.id}${NODEID_SUFFIXES.INPUT}`;
+    } else if (typeName === `${baseTypeName}${TYPE_SUFFIXES.COMMAND_RESULT}`) {
+      return `${block.id}${NODEID_SUFFIXES.RESULT}`;
+    } else if (typeName === baseTypeName) {
+      // Mutation field uses base nodeId
+      return block.id;
+    }
+  }
+  
+  // For non-command blocks or unrecognized patterns, use base nodeId
+  return block.id;
+};
+
+/**
+ * Analyze what schema changes are needed for a block without applying them
+ * Uses existing helper functions for better code reuse
+ */
+const analyzeBlockSchemaChanges = (block: BlockInfo, ast: ParserTree): SchemaChangePlan => {
   const requiredTypeNames = getBlockTypeNames(block);
-  const blockKey = `${block.id}-${block.title}-${block.type}`;
   
-  console.log(`[DEBUG] ===== ensureBlockHasSchemaType for block: ${block.title} (${block.type}) =====`);
-  console.log(`[DEBUG] Block key:`, blockKey);
-  console.log(`[DEBUG] Already processed:`, processedBlocks.has(blockKey));
+  console.log(`[DEBUG] ===== analyzeBlockSchemaChanges for block: ${block.id} ${block.title} (${block.type}) =====`);
   console.log(`[DEBUG] Required type names:`, requiredTypeNames);
-  console.log(`[DEBUG] Current schema length:`, currentSchema.length);
   
-  try {
-    const ast = parseSchema(currentSchema);
-    const existingTypes = findTypeNames(ast);
-    
-    // For command blocks, also check if the mutation field exists
-    let existingFields: string[] = [];
-    if (block.type === 'command') {
-      // Extract mutation field names from the schema
-      const mutationMatch = currentSchema.match(/type Mutation\s*{([^}]*)}/);
-      if (mutationMatch) {
-        const mutationBody = mutationMatch[1];
-        const fieldMatches = mutationBody.match(/(\w+)\s*\(/g);
-        if (fieldMatches) {
-          existingFields = fieldMatches.map(match => match.replace(/\s*\(/, ''));
+  const changes: SchemaChangePlan = {
+    typesToAdd: [],
+    typesToRename: [],
+    typesToRemove: []
+  };
+  
+  // Use findRelatedTypes to get all existing types for this block
+  const existingRelatedTypes = findRelatedTypes(ast, block.id);
+  console.log(`[DEBUG] Found ${existingRelatedTypes.length} existing related types for block ${block.id}`);
+  
+  // Create a map of existing types by their nodeId for quick lookup
+  const existingTypesByNodeId = new Map<string, ParserField>();
+  existingRelatedTypes.forEach(type => {
+    // Extract nodeId from the type's directive
+    const directive = type.directives?.find(d => d.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK);
+    if (directive) {
+      const nodeIdArg = directive.args?.find(arg => arg.name === 'nodeId');
+      if (nodeIdArg) {
+        const nodeIdValue = getDirectiveArgumentValue(nodeIdArg);
+        if (nodeIdValue) {
+          existingTypesByNodeId.set(nodeIdValue, type);
         }
       }
     }
+  });
+  debugger;
+  // Check each required type with its specific nodeId
+  for (const typeName of requiredTypeNames) {
+    // Get the correct nodeId for this specific type
+    const typeNodeId = getNodeIdForType(block, typeName);
     
-    console.log(`[DEBUG] Existing types found in schema:`, existingTypes);
-    console.log(`[DEBUG] Existing mutation fields:`, existingFields);
-    console.log(`[DEBUG] Checking if types ${requiredTypeNames.join(', ')} exist in:`, [...existingTypes, ...existingFields]);
+    console.log(`[DEBUG] Checking type ${typeName} with nodeId ${typeNodeId}`);
     
-    // Check if ALL required types exist (including mutation fields for commands)
-    const allItemsExist = [...existingTypes, ...existingFields];
-    const allTypesExist = requiredTypeNames.every(typeName => allItemsExist.includes(typeName));
-    const missingTypes = requiredTypeNames.filter(typeName => !allItemsExist.includes(typeName));
+    // Check if we have an existing type with this nodeId
+    const existingType = existingTypesByNodeId.get(typeNodeId);
     
-    console.log(`[DEBUG] All types exist:`, allTypesExist);
-    console.log(`[DEBUG] Missing types:`, missingTypes);
-    
-    if (allTypesExist) {
-      // All types exist → Leave schema alone (preserve custom fields)
-      console.log(`[DEBUG] ✅ All types for block ${block.title} already exist, preserving existing schema`);
-      return currentSchema;
-    } else {
-      // Some types missing → Add missing ones surgically, but only once per block
-      if (processedBlocks.has(blockKey)) {
-        console.log(`[DEBUG] 🚫 Block ${block.title} already processed, skipping to prevent endless loop`);
-        return currentSchema;
+    if (existingType) {
+      // Type exists with this nodeId - check if name matches
+      if (existingType.name !== typeName) {
+        console.log(`[DEBUG] Type with nodeId ${typeNodeId} exists but has wrong name: ${existingType.name} -> ${typeName}`);
+        changes.typesToRename.push({
+          oldName: existingType.name,
+          newName: typeName,
+          nodeId: typeNodeId
+        });
+      } else {
+        console.log(`[DEBUG] Type ${typeName} already exists with correct nodeId ${typeNodeId}`);
       }
-      
-      console.log(`[DEBUG] ✅ Adding missing types for block ${block.title} (FIRST TIME):`, missingTypes);
-      setProcessedBlocks(prev => new Set(prev).add(blockKey));
-      return addMissingTypeToSchema(currentSchema, block);
+    } else {
+      // No type found with this nodeId - need to add it
+      console.log(`[DEBUG] Type ${typeName} needs to be added for nodeId ${typeNodeId}`);
+      changes.typesToAdd.push({
+        typeName,
+        blockType: block.type,
+        nodeId: typeNodeId
+      });
     }
-  } catch (error) {
-    console.error('[DEBUG] ❌ Error parsing schema:', error);
-    if (processedBlocks.has(blockKey)) {
-      console.log(`[DEBUG] 🚫 Block ${block.title} already processed, skipping fallback`);
-      return currentSchema;
-    }
-    console.log(`[DEBUG] ✅ Fallback: adding all types for block ${block.title} (FIRST TIME)`);
-    setProcessedBlocks(prev => new Set(prev).add(blockKey));
-    return addMissingTypeToSchema(currentSchema, block);
   }
+  debugger;
+  return changes;
 };
 
-// Helper function to sync all blocks with schema incrementally
-const syncBlocksWithSchema = (blocks: BlockInfo[], currentSchema: string, processedBlocks: Set<string>, setProcessedBlocks: React.Dispatch<React.SetStateAction<Set<string>>>): string => {
-  console.log(`[DEBUG] ===== syncBlocksWithSchema called =====`);
-  console.log('[DEBUG] Syncing blocks with schema:', blocks.length, 'blocks');
-  console.log('[DEBUG] Input schema length:', currentSchema.length);
-  console.log('[DEBUG] Processed blocks:', Array.from(processedBlocks));
-  
-  let updatedSchema = currentSchema;
-  
-  blocks.forEach((block, index) => {
-    console.log(`[DEBUG] Processing block ${index + 1}/${blocks.length}: ${block.title} (${block.type})`);
-    const beforeLength = updatedSchema.length;
-    updatedSchema = ensureBlockHasSchemaType(block, updatedSchema, processedBlocks, setProcessedBlocks);
-    const afterLength = updatedSchema.length;
-    console.log(`[DEBUG] Schema length change: ${beforeLength} -> ${afterLength} (${afterLength - beforeLength})`);
-  });
-  
-  console.log('[DEBUG] Final schema length:', updatedSchema.length);
-  return updatedSchema;
-};
 
 
 
 export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [schema, setSchema] = useState<PassedSchema>(defaultSchema);
   const [schemaRenameNotification, setSchemaRenameNotification] = useState<string | null>(null);
-  const [processedBlocks, setProcessedBlocks] = useState<Set<string>>(new Set());
 
   // Function to update the schema
   const updateSchema = useCallback((data: PassedSchema) => {
     console.log('[DEBUG] updateSchema called with source:', data.source);
-    setSchema(data);
+    console.log('[DEBUG] updateSchema called with data:', data);
+    setSchema({
+      ...data,
+      source: "outside"
+    });
     
     // Clear rename notification when schema is updated
     if (schemaRenameNotification) {
@@ -319,38 +240,52 @@ export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [schemaRenameNotification]);
 
-  // Function to sync schema with provided blocks
+  // Function to sync schema with blocks using nodeId-based logic only
   const syncSchemaWithBlocks = useCallback((blocks: BlockInfo[]) => {
-    console.log('[DEBUG] syncSchemaWithBlocks called with', blocks.length, 'blocks');
+    console.log('[DEBUG] ===== syncSchemaWithBlocks called =====');
+    console.log('[DEBUG] Current blocks:', blocks);
+    console.log('[DEBUG] Current schema code length:', schema.code.length);
     
-    if (blocks.length === 0) {
-      console.log('[DEBUG] No blocks to sync');
-      return;
+    try {
+      const ast = parseSchemaToAST(schema.code);
+      
+      // Collect all change plans for blocks
+      const changePlan = pipe(collectBlockChanges(blocks, ast))
+        .to(plan => addOrphanedTypesToPlan(plan, ast, blocks))
+        .value();
+      
+      // Only update schema if there are actual changes needed
+      const hasChanges = changePlan.typesToAdd.length > 0 || 
+                        changePlan.typesToRename.length > 0 || 
+                        changePlan.typesToRemove.length > 0;
+      
+      if (hasChanges) {
+        console.log('[DEBUG] Changes detected, updating schema:', {
+          toAdd: changePlan.typesToAdd.length,
+          toRename: changePlan.typesToRename.length,
+          toRemove: changePlan.typesToRemove.length
+        });
+        
+        const updatedAST = applyChangePlan(ast, changePlan);
+        const updatedSchemaCode = generateSchemaFromAST(updatedAST);
+        debugger
+        updateSchema({
+          source: 'outside',
+          code: updatedSchemaCode
+        });
+      } else {
+        console.log('[DEBUG] No changes needed, schema is up to date');
+      }
+    } catch (error) {
+      debugger;
+      console.error('[ERROR] NodeId-based sync failed:', error);
+      // No fallback - fail fast if nodeId sync doesn't work
     }
-    
-    const updatedSchema = syncBlocksWithSchema(blocks, schema.code, processedBlocks, setProcessedBlocks);
-    
-    if (updatedSchema !== schema.code) {
-      console.log('[DEBUG] Schema updated by sync, updating state');
-      setSchema(prev => ({
-        ...prev,
-        code: updatedSchema,
-        source: 'outside'
-      }));
-    } else {
-      console.log('[DEBUG] No schema changes needed');
-    }
-  }, [schema.code, processedBlocks]);
-
-  // Function to generate the complete schema with provided blocks
-  const generateSchema = useCallback((blocks: BlockInfo[]) => {
-    console.log('[DEBUG] generateSchema called with', blocks.length, 'blocks');
-    return syncBlocksWithSchema(blocks, schema.code, processedBlocks, setProcessedBlocks);
-  }, [schema.code, processedBlocks]);
+  }, [updateSchema]);
 
   // Function to get the schema AST
   const getSchemaAST = useCallback(() => {
-    return parseSchema(schema.code);
+    return parseSchemaToAST(schema.code);
   }, [schema.code]);
 
   return (
@@ -359,7 +294,6 @@ export const SchemaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       schemaRenameNotification,
       updateSchema,
       syncSchemaWithBlocks,
-      generateSchema,
       getSchemaAST,
     }}>
       {children}
