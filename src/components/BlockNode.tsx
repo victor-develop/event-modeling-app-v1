@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useState, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { BlockNodeProps } from '../types/blockTypes';
-import { BLOCK_KIND_COLORS, BLOCK_KIND_BORDERS, BLOCK_KIND_ICONS } from '../types/blockTypes';
+import { BLOCK_KIND_COLORS, BLOCK_KIND_ICONS } from '../types/blockTypes';
 
 // Using BlockNodeProps type from blockTypes.ts
 
@@ -55,7 +55,6 @@ const BlockNode: React.FC<BlockNodeProps> = ({
   // Get block kind from data
   const blockKind = data.kind as string || 'event'; // Default to event if not specified
   const blockColor = BLOCK_KIND_COLORS[blockKind] || '#ffffff';
-  const blockBorder = BLOCK_KIND_BORDERS[blockKind] || '#cccccc';
   const blockIcon = BLOCK_KIND_ICONS[blockKind] || '📄';
 
   const handleRemoveClick = useCallback((e: React.MouseEvent) => {
@@ -70,7 +69,6 @@ const BlockNode: React.FC<BlockNodeProps> = ({
       style={{
         width: '100%',
         height: '100%',
-        border: `1px solid ${blockBorder}`,
         borderRadius: '5px',
         backgroundColor: blockColor,
         display: 'flex',

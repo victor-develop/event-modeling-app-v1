@@ -67,6 +67,51 @@
   box-shadow: var(--xy-node-boxshadow-default);
 }
 
+/* Custom nodes (block, swimlane, trigger, command, event, view, UI, Processor) draw their
+   own border and shadow; remove the default wrapper border/box-shadow/padding to avoid
+   double borders. Use !important so this wins over .react-flow__node and :hover/:focus. */
+.react-flow__node.react-flow__node-swimlane,
+.react-flow__node.react-flow__node-block,
+.react-flow__node.react-flow__node-trigger,
+.react-flow__node.react-flow__node-command,
+.react-flow__node.react-flow__node-event,
+.react-flow__node.react-flow__node-view,
+.react-flow__node.react-flow__node-UI,
+.react-flow__node.react-flow__node-Processor {
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+/* Keep wrapper border/shadow off in all states for custom nodes */
+.react-flow__node.react-flow__node-swimlane.selectable:hover,
+.react-flow__node.react-flow__node-swimlane.selectable:focus,
+.react-flow__node.react-flow__node-swimlane.selectable.selected,
+.react-flow__node.react-flow__node-block.selectable:hover,
+.react-flow__node.react-flow__node-block.selectable:focus,
+.react-flow__node.react-flow__node-block.selectable.selected,
+.react-flow__node.react-flow__node-trigger.selectable:hover,
+.react-flow__node.react-flow__node-trigger.selectable:focus,
+.react-flow__node.react-flow__node-trigger.selectable.selected,
+.react-flow__node.react-flow__node-command.selectable:hover,
+.react-flow__node.react-flow__node-command.selectable:focus,
+.react-flow__node.react-flow__node-command.selectable.selected,
+.react-flow__node.react-flow__node-event.selectable:hover,
+.react-flow__node.react-flow__node-event.selectable:focus,
+.react-flow__node.react-flow__node-event.selectable.selected,
+.react-flow__node.react-flow__node-view.selectable:hover,
+.react-flow__node.react-flow__node-view.selectable:focus,
+.react-flow__node.react-flow__node-view.selectable.selected,
+.react-flow__node.react-flow__node-UI.selectable:hover,
+.react-flow__node.react-flow__node-UI.selectable:focus,
+.react-flow__node.react-flow__node-UI.selectable.selected,
+.react-flow__node.react-flow__node-Processor.selectable:hover,
+.react-flow__node.react-flow__node-Processor.selectable:focus,
+.react-flow__node.react-flow__node-Processor.selectable.selected {
+  border: none !important;
+  box-shadow: none !important;
+}
+
 .react-flow__node-group {
   background-color: rgba(207, 182, 255, 0.4);
   border-color: #9e86ed;
