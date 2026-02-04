@@ -127,19 +127,23 @@ const SwimlaneNode: React.FC<SwimlaneNodeProps> = ({
     // if we weren't already using the selected prop
   }, []);
   
-  // Handle mouse movement for floating control bar
+  // Handle mouse movement for floating control bar.
+  // Convert screen-relative X to node-local X so the bar stays under the cursor at any zoom level.
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (swimlaneRef.current) {
       const rect = swimlaneRef.current.getBoundingClientRect();
-      const relativeX = e.clientX - rect.left;
-      setMouseX(relativeX);
-      
-      // Don't reposition if mouse is over the control bar
+      const el = swimlaneRef.current;
+      const relativeXScreen = e.clientX - rect.left;
+      const renderedWidth = rect.width;
+      const layoutWidth = el.clientWidth;
+      const scale = renderedWidth > 0 && layoutWidth > 0 ? layoutWidth / renderedWidth : 1;
+      const localX = relativeXScreen * scale;
+      setMouseX(localX);
+
       if (!isMouseOverBar) {
-        // Only reposition control bar if mouse is more than 100px away horizontally
-        const distance = Math.abs(relativeX - controlBarX);
+        const distance = Math.abs(localX - controlBarX);
         if (distance > 100) {
-          setControlBarX(relativeX);
+          setControlBarX(localX);
         }
       }
     }
@@ -148,8 +152,11 @@ const SwimlaneNode: React.FC<SwimlaneNodeProps> = ({
   // Handle mouse enter/leave for showing/hiding control bar
   const handleMouseEnter = useCallback(() => {
     setShowControls(true);
-    // Initialize control bar position to current mouse position on enter
-    setControlBarX(mouseX);
+    // Use last known mouse position (zoom-aware), or center if none yet
+    if (swimlaneRef.current) {
+      const w = swimlaneRef.current.clientWidth;
+      setControlBarX(mouseX > 0 && mouseX < w ? mouseX : w / 2);
+    }
   }, [mouseX]);
   
   const handleMouseLeave = useCallback(() => {
