@@ -4,6 +4,9 @@ import { useNodeLabelEdit } from '../../hooks/useNodeLabelEdit';
 import { Handle, Position } from '@xyflow/react';
 import { useSchemaModal } from '../SchemaEditorModalManager';
 
+const DEFAULT_NODE_WIDTH = 140;
+const DEFAULT_NODE_HEIGHT = 100;
+
 interface EventNodeProps {
   id: string;
   data: { 
@@ -14,6 +17,8 @@ interface EventNodeProps {
   onLabelChange: (nodeId: string, label: string) => void;
   onPayloadChange?: (nodeId: string, payload: Record<string, any>) => void;
   onRemove?: (nodeId: string) => void;
+  width?: number;
+  height?: number;
 }
 
 const EventNode: React.FC<EventNodeProps> = ({
@@ -23,7 +28,11 @@ const EventNode: React.FC<EventNodeProps> = ({
   onLabelChange,
   // onPayloadChange is currently unused but kept for future implementation
   onRemove,
+  width,
+  height,
 }) => {
+  const w = typeof width === 'number' ? width : DEFAULT_NODE_WIDTH;
+  const h = typeof height === 'number' ? height : DEFAULT_NODE_HEIGHT;
   const { openSchemaEditor } = useSchemaModal();
   const {
     label,
@@ -51,17 +60,22 @@ const EventNode: React.FC<EventNodeProps> = ({
     <>
       <div
       style={{
+        width: w,
+        height: h,
+        minWidth: w,
+        maxWidth: w,
+        minHeight: 0,
         padding: '10px',
         borderRadius: '5px',
         backgroundColor: '#f39c12', // Orange for event
         color: 'white',
         border: `1px solid ${selected ? '#1a192b' : '#ddd'}`,
-        width: '100%',
-        height: '100%',
         display: 'flex',
         flexDirection: 'column',
+        boxSizing: 'border-box',
         boxShadow: selected ? '0 0 0 2px #1a192b' : 'none',
         position: 'relative',
+        overflow: 'hidden',
       }}
     >
       {/* Close button */}
@@ -72,10 +86,11 @@ const EventNode: React.FC<EventNodeProps> = ({
           alignItems: 'center', 
           marginBottom: '10px',
           borderBottom: '1px solid rgba(255,255,255,0.2)',
-          paddingBottom: '5px'
+          paddingBottom: '5px',
+          minWidth: 0,
         }}
       >
-        <div style={{ marginRight: '10px', fontSize: '20px' }}>
+        <div style={{ marginRight: '10px', fontSize: '20px', flexShrink: 0 }}>
           📝 {/* Note icon for Event */}
         </div>
         {isEditing ? (
@@ -88,6 +103,7 @@ const EventNode: React.FC<EventNodeProps> = ({
             onKeyDown={handleKeyDown}
             style={{ 
               flex: 1,
+              minWidth: 0,
               fontWeight: 'bold', 
               border: 'none', 
               background: 'rgba(255,255,255,0.1)', 
@@ -103,9 +119,13 @@ const EventNode: React.FC<EventNodeProps> = ({
             onDoubleClick={handleDoubleClick}
             style={{ 
               flex: 1,
+              minWidth: 0,
               fontWeight: 'bold', 
               cursor: 'text', 
-              fontSize: '1em' 
+              fontSize: '1em',
+              wordWrap: 'break-word',
+              overflowWrap: 'break-word',
+              whiteSpace: 'normal',
             }}
           >
             {data.label}

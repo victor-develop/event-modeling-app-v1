@@ -3,6 +3,9 @@ import CloseButton from '../common/CloseButton';
 import { useNodeLabelEdit } from '../../hooks/useNodeLabelEdit';
 import { Handle, Position } from '@xyflow/react';
 
+const DEFAULT_NODE_WIDTH = 140;
+const DEFAULT_NODE_HEIGHT = 100;
+
 interface UINodeProps {
   id: string;
   data: { 
@@ -11,6 +14,8 @@ interface UINodeProps {
   selected: boolean;
   onLabelChange?: (nodeId: string, label: string) => void;
   onRemove?: (nodeId: string) => void;
+  width?: number;
+  height?: number;
 }
 
 const UINode: React.FC<UINodeProps> = ({
@@ -18,8 +23,12 @@ const UINode: React.FC<UINodeProps> = ({
   data,
   selected,
   onLabelChange = () => {},
-  onRemove
+  onRemove,
+  width,
+  height,
 }) => {
+  const w = typeof width === 'number' ? width : DEFAULT_NODE_WIDTH;
+  const h = typeof height === 'number' ? height : DEFAULT_NODE_HEIGHT;
   const {
     label,
     isEditing,
@@ -46,8 +55,11 @@ const UINode: React.FC<UINodeProps> = ({
   return (
     <div
       style={{
-        width: '100%',
-        height: '100%',
+        width: w,
+        height: h,
+        minWidth: w,
+        maxWidth: w,
+        minHeight: 0,
         border: `1px solid ${selected ? '#1a192b' : '#7c3aed'}`,
         borderRadius: '5px',
         backgroundColor: '#a78bfa', // Purple
@@ -55,8 +67,10 @@ const UINode: React.FC<UINodeProps> = ({
         padding: '10px',
         display: 'flex',
         flexDirection: 'column',
+        boxSizing: 'border-box',
         boxShadow: selected ? '0 0 0 2px #1a192b' : '0 0 4px rgba(124,58,237,0.15)',
         position: 'relative',
+        overflow: 'hidden',
       }}
     >
       {/* Close button */}
@@ -67,10 +81,11 @@ const UINode: React.FC<UINodeProps> = ({
           alignItems: 'center', 
           marginBottom: '10px',
           borderBottom: '1px solid rgba(255,255,255,0.2)',
-          paddingBottom: '5px'
+          paddingBottom: '5px',
+          minWidth: 0,
         }}
       >
-        <div style={{ marginRight: '10px', fontSize: '20px' }}>
+        <div style={{ marginRight: '10px', fontSize: '20px', flexShrink: 0 }}>
           🖥️
         </div>
         {isEditing ? (
@@ -83,6 +98,7 @@ const UINode: React.FC<UINodeProps> = ({
             onKeyDown={handleKeyDown}
             style={{ 
               flex: 1,
+              minWidth: 0,
               fontWeight: 'bold', 
               border: 'none', 
               background: 'rgba(255,255,255,0.1)', 
@@ -98,9 +114,13 @@ const UINode: React.FC<UINodeProps> = ({
             onDoubleClick={handleDoubleClick}
             style={{ 
               flex: 1,
+              minWidth: 0,
               fontWeight: 'bold', 
               cursor: 'text', 
-              fontSize: '1em' 
+              fontSize: '1em',
+              wordWrap: 'break-word',
+              overflowWrap: 'break-word',
+              whiteSpace: 'normal',
             }}
           >
             {label}

@@ -5,12 +5,20 @@ import { BLOCK_KIND_COLORS, BLOCK_KIND_ICONS } from '../types/blockTypes';
 
 // Using BlockNodeProps type from blockTypes.ts
 
+const BLOCK_NODE_WIDTH = 140;
+const BLOCK_NODE_HEIGHT = 100;
+
 const BlockNode: React.FC<BlockNodeProps> = ({
   id,
   data,
   onLabelChange,
   onRemove,
+  width,
+  height,
 }) => {
+  // Use node dimensions from React Flow (from style); fallback to default block size so content never overflows
+  const w = typeof width === 'number' ? width : BLOCK_NODE_WIDTH;
+  const h = typeof height === 'number' ? height : BLOCK_NODE_HEIGHT;
   const [isEditing, setIsEditing] = useState(false);
   const [label, setLabel] = useState(data.label);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -67,8 +75,11 @@ const BlockNode: React.FC<BlockNodeProps> = ({
   return (
     <div
       style={{
-        width: '100%',
-        height: '100%',
+        width: w,
+        height: h,
+        minWidth: w,
+        maxWidth: w,
+        minHeight: 0,
         borderRadius: '5px',
         backgroundColor: blockColor,
         display: 'flex',
@@ -76,8 +87,10 @@ const BlockNode: React.FC<BlockNodeProps> = ({
         justifyContent: 'center',
         alignItems: 'center',
         padding: '10px',
+        boxSizing: 'border-box',
         boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
         position: 'relative',
+        overflow: 'hidden',
       }}
     >
       {/* Close button */}
@@ -137,10 +150,15 @@ const BlockNode: React.FC<BlockNodeProps> = ({
           style={{ 
             cursor: 'text', 
             padding: '5px', 
-            width: '100%', 
+            width: '100%',
+            maxWidth: w - 20,
+            minWidth: 0,
             textAlign: 'center',
             fontSize: '14px',
             fontWeight: 500,
+            wordWrap: 'break-word',
+            overflowWrap: 'break-word',
+            whiteSpace: 'normal',
           }}
         >
           {data.label}

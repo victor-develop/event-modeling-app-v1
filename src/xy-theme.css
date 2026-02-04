@@ -83,6 +83,20 @@
   padding: 0 !important;
   background: transparent !important;
 }
+
+/* Block and standalone nodes (trigger, command, event, view, UI, Processor): fix width so long labels wrap */
+.react-flow__node.react-flow__node-block,
+.react-flow__node.react-flow__node-trigger,
+.react-flow__node.react-flow__node-command,
+.react-flow__node.react-flow__node-event,
+.react-flow__node.react-flow__node-view,
+.react-flow__node.react-flow__node-UI,
+.react-flow__node.react-flow__node-Processor {
+  width: 140px !important;
+  max-width: 140px !important;
+  min-width: 140px !important;
+  box-sizing: border-box !important;
+}
 /* Keep wrapper border/shadow off in all states for custom nodes */
 .react-flow__node.react-flow__node-swimlane.selectable:hover,
 .react-flow__node.react-flow__node-swimlane.selectable:focus,

@@ -4,6 +4,9 @@ import { useNodeLabelEdit } from '../../hooks/useNodeLabelEdit';
 import { Handle, Position } from '@xyflow/react';
 import { useSchemaModal } from '../SchemaEditorModalManager';
 
+const DEFAULT_NODE_WIDTH = 140;
+const DEFAULT_NODE_HEIGHT = 100;
+
 interface ViewNodeProps {
   id: string;
   data: { 
@@ -14,6 +17,8 @@ interface ViewNodeProps {
   onLabelChange: (nodeId: string, label: string) => void;
   onSourcesChange?: (nodeId: string, sourceEvents: string[]) => void;
   onRemove?: (nodeId: string) => void;
+  width?: number;
+  height?: number;
 }
 
 const ViewNode: React.FC<ViewNodeProps> = ({
@@ -23,7 +28,11 @@ const ViewNode: React.FC<ViewNodeProps> = ({
   onLabelChange,
   // onSourcesChange is currently unused but kept for future implementation
   onRemove,
+  width,
+  height,
 }) => {
+  const w = typeof width === 'number' ? width : DEFAULT_NODE_WIDTH;
+  const h = typeof height === 'number' ? height : DEFAULT_NODE_HEIGHT;
   const { openSchemaEditor } = useSchemaModal();
   const {
     label,
@@ -52,8 +61,11 @@ const ViewNode: React.FC<ViewNodeProps> = ({
     <>
       <div
       style={{
-        width: '100%',
-        height: '100%',
+        width: w,
+        height: h,
+        minWidth: w,
+        maxWidth: w,
+        minHeight: 0,
         border: `1px solid ${selected ? '#1a192b' : '#ddd'}`,
         borderRadius: '5px',
         backgroundColor: '#2ecc71', // Green for view
@@ -61,8 +73,10 @@ const ViewNode: React.FC<ViewNodeProps> = ({
         padding: '10px',
         display: 'flex',
         flexDirection: 'column',
+        boxSizing: 'border-box',
         boxShadow: selected ? '0 0 0 2px #1a192b' : 'none',
         position: 'relative',
+        overflow: 'hidden',
       }}
     >
       {/* Close button */}
@@ -73,10 +87,11 @@ const ViewNode: React.FC<ViewNodeProps> = ({
           alignItems: 'center', 
           marginBottom: '10px',
           borderBottom: '1px solid rgba(255,255,255,0.2)',
-          paddingBottom: '5px'
+          paddingBottom: '5px',
+          minWidth: 0,
         }}
       >
-        <div style={{ marginRight: '10px', fontSize: '20px' }}>
+        <div style={{ marginRight: '10px', fontSize: '20px', flexShrink: 0 }}>
           👁️ {/* Eye icon for View */}
         </div>
         {isEditing ? (
@@ -89,6 +104,7 @@ const ViewNode: React.FC<ViewNodeProps> = ({
             onKeyDown={handleKeyDown}
             style={{ 
               flex: 1,
+              minWidth: 0,
               fontWeight: 'bold', 
               border: 'none', 
               background: 'rgba(255,255,255,0.1)', 
@@ -104,9 +120,13 @@ const ViewNode: React.FC<ViewNodeProps> = ({
             onDoubleClick={handleDoubleClick}
             style={{ 
               flex: 1,
+              minWidth: 0,
               fontWeight: 'bold', 
               cursor: 'text', 
-              fontSize: '1em' 
+              fontSize: '1em',
+              wordWrap: 'break-word',
+              overflowWrap: 'break-word',
+              whiteSpace: 'normal',
             }}
           >
             {data.label}

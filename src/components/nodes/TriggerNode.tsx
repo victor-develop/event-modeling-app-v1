@@ -3,6 +3,9 @@ import CloseButton from '../common/CloseButton';
 import { useNodeLabelEdit } from '../../hooks/useNodeLabelEdit';
 import { Handle, Position } from '@xyflow/react';
 
+const DEFAULT_NODE_WIDTH = 140;
+const DEFAULT_NODE_HEIGHT = 100;
+
 interface TriggerNodeProps {
   id: string;
   data: { 
@@ -12,6 +15,8 @@ interface TriggerNodeProps {
   selected: boolean;
   onLabelChange: (nodeId: string, label: string) => void;
   onRemove?: (nodeId: string) => void;
+  width?: number;
+  height?: number;
 }
 
 const TriggerNode: React.FC<TriggerNodeProps> = ({
@@ -20,7 +25,11 @@ const TriggerNode: React.FC<TriggerNodeProps> = ({
   selected,
   onLabelChange,
   onRemove,
+  width,
+  height,
 }) => {
+  const w = typeof width === 'number' ? width : DEFAULT_NODE_WIDTH;
+  const h = typeof height === 'number' ? height : DEFAULT_NODE_HEIGHT;
   const {
     label,
     isEditing,
@@ -60,16 +69,21 @@ const TriggerNode: React.FC<TriggerNodeProps> = ({
   return (
     <div
       style={{
-        width: '100%',
-        height: '100%',
+        width: w,
+        height: h,
+        minWidth: w,
+        maxWidth: w,
+        minHeight: 0,
         border: `1px solid ${selected ? '#1a192b' : '#ddd'}`,
         borderRadius: '5px',
         backgroundColor: 'white',
         padding: '10px',
         display: 'flex',
         flexDirection: 'column',
+        boxSizing: 'border-box',
         boxShadow: selected ? '0 0 0 2px #1a192b' : 'none',
         position: 'relative',
+        overflow: 'hidden',
       }}
     >
       {/* Close button */}
@@ -80,10 +94,11 @@ const TriggerNode: React.FC<TriggerNodeProps> = ({
           alignItems: 'center', 
           marginBottom: '10px',
           borderBottom: '1px solid #eee',
-          paddingBottom: '5px'
+          paddingBottom: '5px',
+          minWidth: 0,
         }}
       >
-        <div style={{ marginRight: '10px', fontSize: '20px' }}>
+        <div style={{ marginRight: '10px', fontSize: '20px', flexShrink: 0 }}>
           {getTriggerIcon()}
         </div>
         {isEditing ? (
@@ -96,6 +111,7 @@ const TriggerNode: React.FC<TriggerNodeProps> = ({
             onKeyDown={handleKeyDown}
             style={{ 
               flex: 1,
+              minWidth: 0,
               fontWeight: 'bold', 
               border: 'none', 
               background: 'transparent', 
@@ -108,9 +124,13 @@ const TriggerNode: React.FC<TriggerNodeProps> = ({
             onDoubleClick={handleDoubleClick}
             style={{ 
               flex: 1,
+              minWidth: 0,
               fontWeight: 'bold', 
               cursor: 'text', 
-              fontSize: '1em' 
+              fontSize: '1em',
+              wordWrap: 'break-word',
+              overflowWrap: 'break-word',
+              whiteSpace: 'normal',
             }}
           >
             {data.label}

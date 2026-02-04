@@ -37,6 +37,9 @@ export interface BlockNodeProps {
   // Props for dispatching events
   onLabelChange: (nodeId: string, label: string) => void;
   onRemove?: (nodeId: string) => void;
+  /** Node dimensions from React Flow (use to constrain content and enable text wrap) */
+  width?: number;
+  height?: number;
 }
 
 /**
