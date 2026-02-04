@@ -17,33 +17,7 @@ export const BlockKind = {
 export type BlockKind = typeof BlockKind[keyof typeof BlockKind];
 
 /**
- * Data structure for block nodes
- */
-export type BlockNodeData = {
-  id: string;
-  label: string;
-  kind: string;
-  parentId?: string; // Reference to parent swimlane
-  extent?: { width: number; height: number };
-  details?: Record<string, unknown>; // For additional metadata
-};
-
-/**
- * Props for BlockNode component
- */
-export interface BlockNodeProps {
-  id: string;
-  data: BlockNodeData;
-  // Props for dispatching events
-  onLabelChange: (nodeId: string, label: string) => void;
-  onRemove?: (nodeId: string) => void;
-  /** Node dimensions from React Flow (use to constrain content and enable text wrap) */
-  width?: number;
-  height?: number;
-}
-
-/**
- * Returns background color for each block kind
+ * Returns background color for each block kind (e.g. for swimlane add-block UI)
  */
 export const BLOCK_KIND_COLORS: Record<string, string> = {
   'trigger': 'rgba(210, 250, 210, 0.8)', // Light green

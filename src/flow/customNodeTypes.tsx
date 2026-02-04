@@ -1,6 +1,5 @@
 // React is used implicitly by JSX
 import SwimlaneNode from '../components/SwimlaneNode';
-import BlockNode from '../components/BlockNode';
 import TriggerNode from '../components/nodes/TriggerNode';
 import CommandNode from '../components/nodes/CommandNode';
 import EventNode from '../components/nodes/EventNode';
@@ -57,7 +56,6 @@ export function createCustomNodeTypes({
         dispatchUpdateNodeLabel={dispatchUpdateNodeLabel}
       />
     ),
-    block: (nodeProps: any) => <BlockNode {...nodeProps} onLabelChange={dispatchUpdateNodeLabel} onRemove={dispatchRemoveNode} />,
     trigger: (nodeProps: any) => <TriggerNode {...nodeProps} onLabelChange={dispatchUpdateNodeLabel} onRemove={dispatchRemoveNode} />,
     command: (nodeProps: any) => <CommandNode {...nodeProps} onLabelChange={dispatchUpdateNodeLabel} onParametersChange={dispatchUpdateCommandParameters} onRemove={dispatchRemoveNode} />,
     event: (nodeProps: any) => <EventNode {...nodeProps} onLabelChange={dispatchUpdateNodeLabel} onPayloadChange={dispatchUpdateEventPayload} onRemove={dispatchRemoveNode} />,

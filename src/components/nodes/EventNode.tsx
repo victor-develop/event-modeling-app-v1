@@ -1,18 +1,12 @@
-import React, { memo, useCallback } from 'react';
-import CloseButton from '../common/CloseButton';
-import { useNodeLabelEdit } from '../../hooks/useNodeLabelEdit';
+import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
+import { useNodeLabelEdit } from '../../hooks/useNodeLabelEdit';
 import { useSchemaModal } from '../SchemaEditorModalManager';
-
-const DEFAULT_NODE_WIDTH = 140;
-const DEFAULT_NODE_HEIGHT = 100;
+import BaseBlockNode from './BaseBlockNode';
 
 interface EventNodeProps {
   id: string;
-  data: { 
-    label: string;
-    payload?: Record<string, any>;
-  };
+  data: { label: string; payload?: Record<string, any> };
   selected: boolean;
   onLabelChange: (nodeId: string, label: string) => void;
   onPayloadChange?: (nodeId: string, payload: Record<string, any>) => void;
@@ -26,149 +20,72 @@ const EventNode: React.FC<EventNodeProps> = ({
   data,
   selected,
   onLabelChange,
-  // onPayloadChange is currently unused but kept for future implementation
   onRemove,
   width,
   height,
 }) => {
-  const w = typeof width === 'number' ? width : DEFAULT_NODE_WIDTH;
-  const h = typeof height === 'number' ? height : DEFAULT_NODE_HEIGHT;
   const { openSchemaEditor } = useSchemaModal();
-  const {
-    label,
-    isEditing,
-    inputRef,
-    handleLabelChange,
-    handleDoubleClick,
-    handleBlur,
-    handleKeyDown
-  } = useNodeLabelEdit({
+  const labelEdit = useNodeLabelEdit({
     id,
     initialLabel: data.label,
     onLabelChange,
-    nodeType: 'EventNode'
+    nodeType: 'EventNode',
   });
 
-  const handleRemoveClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onRemove) {
-      onRemove(id);
-    }
-  }, [id, onRemove]);
+  const hasPayload = data.payload && Object.keys(data.payload).length > 0;
 
   return (
     <>
-      <div
-      style={{
-        width: w,
-        height: h,
-        minWidth: w,
-        maxWidth: w,
-        minHeight: 0,
-        padding: '10px',
-        borderRadius: '5px',
-        backgroundColor: '#f39c12', // Orange for event
-        color: 'white',
-        border: `1px solid ${selected ? '#1a192b' : '#ddd'}`,
-        display: 'flex',
-        flexDirection: 'column',
-        boxSizing: 'border-box',
-        boxShadow: selected ? '0 0 0 2px #1a192b' : 'none',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
+    <BaseBlockNode
+      id={id}
+      selected={selected}
+      onRemove={onRemove}
+      width={width}
+      height={height}
+      backgroundColor="#f39c12"
+      borderColor={selected ? '#1a192b' : '#ddd'}
+      color="white"
+      boxShadow={selected ? '0 0 0 2px #1a192b' : 'none'}
+      icon="📝"
+      headerBorderBottom="1px solid rgba(255,255,255,0.2)"
+      inputBackground="rgba(255,255,255,0.1)"
+      labelProps={{ ...labelEdit, displayLabel: data.label }}
     >
-      {/* Close button */}
-      <CloseButton onClick={handleRemoveClick} />
-      <div 
-        style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          marginBottom: '10px',
-          borderBottom: '1px solid rgba(255,255,255,0.2)',
-          paddingBottom: '5px',
-          minWidth: 0,
-        }}
-      >
-        <div style={{ marginRight: '10px', fontSize: '20px', flexShrink: 0 }}>
-          📝 {/* Note icon for Event */}
-        </div>
-        {isEditing ? (
-          <input
-            ref={inputRef}
-            type="text"
-            value={label}
-            onChange={handleLabelChange}
-            onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
-            style={{ 
-              flex: 1,
-              minWidth: 0,
-              fontWeight: 'bold', 
-              border: 'none', 
-              background: 'rgba(255,255,255,0.1)', 
-              color: 'white',
-              fontSize: '1em', 
-              outline: 'none',
-              borderRadius: '3px',
-              padding: '2px 5px'
-            }}
-          />
-        ) : (
-          <div
-            onDoubleClick={handleDoubleClick}
-            style={{ 
-              flex: 1,
-              minWidth: 0,
-              fontWeight: 'bold', 
-              cursor: 'text', 
-              fontSize: '1em',
-              wordWrap: 'break-word',
-              overflowWrap: 'break-word',
-              whiteSpace: 'normal',
-            }}
-          >
-            {data.label}
-          </div>
-        )}
-      </div>
-      
-      {data.payload && Object.keys(data.payload).length > 0 && (
+      {hasPayload ? (
         <div style={{ flex: 1, fontSize: '0.9em' }}>
           <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>Payload:</div>
           <ul style={{ margin: 0, paddingLeft: '20px' }}>
-            {Object.entries(data.payload).map(([key, value]) => (
+            {Object.entries(data.payload!).map(([key, value]) => (
               <li key={key}>{key}: {String(value)}</li>
             ))}
           </ul>
         </div>
-      )}
-      
-      {(!data.payload || Object.keys(data.payload).length === 0) && (
-        <div style={{ 
-          flex: 1, 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          color: 'rgba(255,255,255,0.7)',
-          fontSize: '0.9em',
-          textAlign: 'center',
-          fontStyle: 'italic'
-        }}>
+      ) : (
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'rgba(255,255,255,0.7)',
+            fontSize: '0.9em',
+            textAlign: 'center',
+            fontStyle: 'italic',
+          }}
+        >
           Business fact / State change
         </div>
       )}
-      
-      {/* Handle on both left and right */}
-      {/* Schema button */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        marginTop: '10px',
-        borderTop: '1px solid rgba(0,0,0,0.1)',
-        paddingTop: '5px'
-      }}>
-        <button 
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          marginTop: '10px',
+          borderTop: '1px solid rgba(0,0,0,0.1)',
+          paddingTop: '5px',
+        }}
+      >
+        <button
           onClick={(e) => {
             e.stopPropagation();
             openSchemaEditor(id, data.label, 'event');
@@ -180,16 +97,15 @@ const EventNode: React.FC<EventNodeProps> = ({
             padding: '3px 8px',
             borderRadius: '3px',
             cursor: 'pointer',
-            fontSize: '12px'
+            fontSize: '12px',
           }}
         >
           Edit Schema
         </button>
       </div>
-
+    </BaseBlockNode>
       <Handle type="target" position={Position.Left} style={{ background: 'white' }} />
       <Handle type="source" position={Position.Right} style={{ background: 'white' }} />
-    </div>
     </>
   );
 };

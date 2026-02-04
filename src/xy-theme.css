@@ -67,11 +67,10 @@
   box-shadow: var(--xy-node-boxshadow-default);
 }
 
-/* Custom nodes (block, swimlane, trigger, command, event, view, UI, Processor) draw their
+/* Custom nodes (swimlane, trigger, command, event, view, UI, Processor) draw their
    own border and shadow; remove the default wrapper border/box-shadow/padding to avoid
    double borders. Use !important so this wins over .react-flow__node and :hover/:focus. */
 .react-flow__node.react-flow__node-swimlane,
-.react-flow__node.react-flow__node-block,
 .react-flow__node.react-flow__node-trigger,
 .react-flow__node.react-flow__node-command,
 .react-flow__node.react-flow__node-event,
@@ -84,8 +83,7 @@
   background: transparent !important;
 }
 
-/* Block and standalone nodes (trigger, command, event, view, UI, Processor): fix width so long labels wrap */
-.react-flow__node.react-flow__node-block,
+/* Standalone nodes (trigger, command, event, view, UI, Processor): fix width so long labels wrap */
 .react-flow__node.react-flow__node-trigger,
 .react-flow__node.react-flow__node-command,
 .react-flow__node.react-flow__node-event,
@@ -101,9 +99,6 @@
 .react-flow__node.react-flow__node-swimlane.selectable:hover,
 .react-flow__node.react-flow__node-swimlane.selectable:focus,
 .react-flow__node.react-flow__node-swimlane.selectable.selected,
-.react-flow__node.react-flow__node-block.selectable:hover,
-.react-flow__node.react-flow__node-block.selectable:focus,
-.react-flow__node.react-flow__node-block.selectable.selected,
 .react-flow__node.react-flow__node-trigger.selectable:hover,
 .react-flow__node.react-flow__node-trigger.selectable:focus,
 .react-flow__node.react-flow__node-trigger.selectable.selected,

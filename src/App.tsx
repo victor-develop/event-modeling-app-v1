@@ -435,8 +435,7 @@ const AppContent = () => {
 
   // Helper function to check if a node should have horizontal-only movement
   const shouldConstrainToHorizontalMovement = useCallback((nodeType?: string): boolean => {
-    return nodeType === 'block' || 
-           nodeType === 'trigger' || 
+    return nodeType === 'trigger' || 
            nodeType === 'command' || 
            nodeType === 'event' || 
            nodeType === 'view' || 
