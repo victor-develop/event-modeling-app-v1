@@ -39,7 +39,7 @@ export function createBlock({
   existingBlocks = []
 }: CreateBlockParams): BlockData {
   // Block dimensions - consistent across all creation methods
-  const blockHeight = 100; // Taller blocks for better visibility
+  const blockHeight = 140; // Tall enough for label + description + Edit Schema button
   const blockWidth = 140;  // Wider blocks for better content display
   const blockGap = 160;    // Horizontal gap between blocks
   const xOffset = 5;      // Offset from the left edge of swimlane - reduced to minimize left gap

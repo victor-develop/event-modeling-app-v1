@@ -6,7 +6,7 @@ import type React from 'react';
  * text-wrap behavior consistent without duplication.
  */
 export const DEFAULT_NODE_WIDTH = 140;
-export const DEFAULT_NODE_HEIGHT = 100;
+export const DEFAULT_NODE_HEIGHT = 140;
 
 export function getNodeDimensions(width?: number, height?: number) {
   return {
