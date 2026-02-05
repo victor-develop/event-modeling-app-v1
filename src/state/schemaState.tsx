@@ -107,7 +107,8 @@ const pipe = function<T>(value: T) {
 };
 
 
-// Centralized mapping between block types and their generated GraphQL type names
+// Centralized mapping between block types and their generated GraphQL type names.
+// Command blocks: only Input + CommandResult (no redundant "type X" — mutation uses input/result).
 const getBlockTypeNames = (block: BlockInfo): string[] => {
   const typeName = toCamelCase(block.title);
   
@@ -116,7 +117,6 @@ const getBlockTypeNames = (block: BlockInfo): string[] => {
       return [
         `${typeName}${TYPE_SUFFIXES.INPUT}`,
         `${typeName}${TYPE_SUFFIXES.COMMAND_RESULT}`,
-        typeName // for the mutation field name
       ];
     case 'event':
       return [typeName];
@@ -181,7 +181,6 @@ const analyzeBlockSchemaChanges = (block: BlockInfo, ast: ParserTree): SchemaCha
       }
     }
   });
-  debugger;
   // Check each required type with its specific nodeId
   for (const typeName of requiredTypeNames) {
     // Get the correct nodeId for this specific type
@@ -214,7 +213,6 @@ const analyzeBlockSchemaChanges = (block: BlockInfo, ast: ParserTree): SchemaCha
       });
     }
   }
-  debugger;
   return changes;
 };
 
