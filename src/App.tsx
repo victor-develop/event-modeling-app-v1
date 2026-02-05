@@ -14,11 +14,9 @@ import {
   type Connection,
   type NodeSelectionChange,
 } from '@xyflow/react';
-import { isValidConnection, getConnectionPatternType } from './utils/patternValidation';
 // No type imports needed from nodeTypes
-import { EdgePriority } from './types/edgeTypes';
-import { nanoid } from 'nanoid';
-import { createBlock, validateBlockInSwimlane } from './utils/blockCreation';
+import { executeAction } from './state/actionRegistry';
+import { parseCliInput } from './utils/cliParser';
 
 import '@xyflow/react/dist/style.css';
 import './xy-theme.css';
@@ -58,6 +56,32 @@ const AppContent = () => {
   
   // Extract nodes and edges from state for convenience
   const { nodes, edges, events, currentEventIndex } = state;
+
+  const runAction = useCallback(
+    (actionId: import('./state/actionRegistry').ActionId, input: unknown) =>
+      executeAction(actionId, input, { nodes, edges, selectedSwimlaneId }, dispatch, showToast),
+    [nodes, edges, selectedSwimlaneId, dispatch, showToast]
+  );
+
+  const onCliCommand = useCallback((rawCommand: string) => {
+    const parseResult = parseCliInput(rawCommand);
+    if (parseResult.ok === false) {
+      const message = 'error' in parseResult ? parseResult.error : 'Command failed.';
+      const toastType = 'toastType' in parseResult ? parseResult.toastType : 'error';
+      showToast({
+        message,
+        type: toastType || 'error',
+        duration: 5000
+      });
+      return { ok: false };
+    }
+
+    const actionResult = runAction(parseResult.actionId, parseResult.input);
+    if (actionResult.ok && parseResult.actionId === 'addSwimlane' && 'id' in actionResult.event.payload) {
+      setSelectedSwimlaneId(actionResult.event.payload.id);
+    }
+    return { ok: actionResult.ok };
+  }, [runAction, showToast]);
   
   // Auto-sync schema when nodes change (new blocks added)
   useEffect(() => {
@@ -83,355 +107,35 @@ const AppContent = () => {
   
   // Function to add a new swimlane with specified kind
   const addSwimlane = useCallback((kind: string) => {
-    const id = nanoid();
-    const newSwimlane = {
-      id,
-      type: 'swimlane',
-      position: { x: 100, y: 100 + nodes.filter(n => n.type === 'swimlane').length * 200 },
-      style: {
-        width: 800,
-        height: 150,
-        backgroundColor: kind === 'event' ? '#fff8e1' : 
-                        kind === 'command_view' ? '#e3f2fd' : 
-                        kind === 'trigger' ? '#e8f5e9' : '#f5f5f5',
-        border: '1px dashed #aaa',
-        borderRadius: '5px',
-        padding: '10px'  
-      },
-      data: { 
-        label: `${kind.charAt(0).toUpperCase() + kind.slice(1).replace('_', ' & ')} Swimlane`,
-        kind: kind // Store the kind in the swimlane data
-      }
-    };
-    
-    dispatch({
-      type: EventTypes.ModelingEditor.ADD_SWIMLANE,
-      payload: newSwimlane
-    });
-    
-    // Automatically select the new swimlane
-    setSelectedSwimlaneId(id);
-  }, [nodes, dispatch]);
+    const result = runAction('addSwimlane', { kind });
+    if (result.ok && 'id' in result.event.payload) {
+      setSelectedSwimlaneId(result.event.payload.id);
+    }
+  }, [runAction]);
   
-  // Dispatch functions for different node types
-  const dispatchAddEvent = useCallback((node: any) => {
-    dispatch({
-      type: EventTypes.ModelingEditor.ADD_EVENT,
-      payload: node
-    });
-  }, [dispatch]);
-  
-  const dispatchAddView = useCallback((node: any) => {
-    dispatch({
-      type: EventTypes.ModelingEditor.ADD_VIEW,
-      payload: node
-    });
-  }, [dispatch]);
-  
-  const dispatchAddCommand = useCallback((node: any) => {
-    dispatch({
-      type: EventTypes.ModelingEditor.ADD_COMMAND,
-      payload: node
-    });
-  }, [dispatch]);
-  
-  const dispatchAddTrigger = useCallback((node: any) => {
-    dispatch({
-      type: EventTypes.ModelingEditor.ADD_TRIGGER,
-      payload: node
-    });
-  }, [dispatch]);
-  
-  // Dispatch functions for UI and Processor nodes
-  const dispatchAddUI = useCallback((node: any) => {
-    dispatch({
-      type: EventTypes.ModelingEditor.ADD_UI,
-      payload: node
-    });
-  }, [dispatch]);
-  
-  const dispatchAddProcessor = useCallback((node: any) => {
-    dispatch({
-      type: EventTypes.ModelingEditor.ADD_PROCESSOR,
-      payload: node
-    });
-  }, [dispatch]);
-  
-  // Function to add a new Trigger node within selected swimlane
   const addTrigger = useCallback(() => {
-    // Require a selected swimlane
-    if (!selectedSwimlaneId) {
-      console.warn('No swimlane selected. Please select a swimlane first.');
-      showToast({
-        message: 'Please select a swimlane first before adding a Trigger block.',
-        type: 'warning',
-        duration: 5000
-      });
-      return;
-    }
-    
-    // Get the selected swimlane
-    const swimlane = nodes.find(n => n.id === selectedSwimlaneId);
-    if (!swimlane) {
-      console.warn('Selected swimlane not found');
-      return;
-    }
-    
-    // Validate swimlane kind using the shared validation function
-    const validationError = validateBlockInSwimlane('trigger', swimlane.data?.kind);
-    if (validationError) {
-      console.warn(validationError);
-      showToast({
-        message: validationError,
-        type: 'error',
-        duration: 5000
-      });
-      return;
-    }
-    
-    // Find existing blocks in this swimlane to position horizontally
-    const blocksInLane = nodes.filter(n => n.parentId === selectedSwimlaneId);
-    
-    // Use the shared block creation utility
-    const newTrigger = createBlock({
-      blockType: 'trigger',
-      parentId: selectedSwimlaneId,
-      parentPosition: swimlane.position,
-      existingBlocks: blocksInLane
-    });
+    runAction('addTrigger', {});
+  }, [runAction]);
 
-    dispatchAddTrigger(newTrigger);
-  }, [dispatchAddTrigger, selectedSwimlaneId, nodes, showToast]);
-  
-  // Function to add a new Command node within selected swimlane
   const addCommand = useCallback(() => {
-    // Require a selected swimlane
-    if (!selectedSwimlaneId) {
-      console.warn('No swimlane selected. Please select a swimlane first.');
-      showToast({
-        message: 'Please select a swimlane first before adding a Command block.',
-        type: 'warning',
-        duration: 5000
-      });
-      return;
-    }
-    
-    // Get the selected swimlane
-    const swimlane = nodes.find(n => n.id === selectedSwimlaneId);
-    if (!swimlane) {
-      console.warn('Selected swimlane not found');
-      return;
-    }
-    
-    // Validate swimlane kind using the shared validation function
-    const validationError = validateBlockInSwimlane('command', swimlane.data?.kind);
-    if (validationError) {
-      console.warn(validationError);
-      showToast({
-        message: validationError,
-        type: 'error',
-        duration: 5000
-      });
-      return;
-    }
-    
-    // Find existing blocks in this swimlane to position horizontally
-    const blocksInLane = nodes.filter(n => n.parentId === selectedSwimlaneId);
-    
-    // Use the shared block creation utility
-    const newCommand = createBlock({
-      blockType: 'command',
-      parentId: selectedSwimlaneId,
-      parentPosition: swimlane.position,
-      existingBlocks: blocksInLane
-    });
+    runAction('addCommand', {});
+  }, [runAction]);
 
-    dispatchAddCommand(newCommand);
-  }, [dispatchAddCommand, selectedSwimlaneId, nodes, showToast]);
-
-  // Function to add a new Event node within selected swimlane
   const addEvent = useCallback(() => {
-    // Require a selected swimlane
-    if (!selectedSwimlaneId) {
-      console.warn('No swimlane selected. Please select a swimlane first.');
-      showToast({
-        message: 'Please select a swimlane first before adding an Event block.',
-        type: 'warning',
-        duration: 5000
-      });
-      return;
-    }
-    
-    // Get the selected swimlane
-    const swimlane = nodes.find(n => n.id === selectedSwimlaneId);
-    if (!swimlane) {
-      console.warn('Selected swimlane not found');
-      return;
-    }
-    
-    // Validate swimlane kind using the shared validation function
-    const validationError = validateBlockInSwimlane('event', swimlane.data?.kind);
-    if (validationError) {
-      console.warn(validationError);
-      showToast({
-        message: validationError,
-        type: 'error',
-        duration: 5000
-      });
-      return;
-    }
-    
-    // Find existing blocks in this swimlane to position horizontally
-    const blocksInLane = nodes.filter(n => n.parentId === selectedSwimlaneId);
-    
-    // Use the shared block creation utility
-    const newEvent = createBlock({
-      blockType: 'event',
-      parentId: selectedSwimlaneId,
-      parentPosition: swimlane.position,
-      existingBlocks: blocksInLane
-    });
+    runAction('addEvent', {});
+  }, [runAction]);
 
-    dispatchAddEvent(newEvent);
-  }, [dispatchAddEvent, selectedSwimlaneId, nodes, showToast]);
-
-  // Function to add a new view node within selected swimlane
   const addView = useCallback(() => {
-    // Require a selected swimlane
-    if (!selectedSwimlaneId) {
-      console.warn('No swimlane selected. Please select a swimlane first.');
-      showToast({
-        message: 'Please select a swimlane first before adding a View.',
-        type: 'warning',
-        duration: 5000
-      });
-      return;
-    }
-    
-    // Get the selected swimlane
-    const swimlane = nodes.find(n => n.id === selectedSwimlaneId);
-    if (!swimlane) {
-      console.warn('Selected swimlane not found');
-      return;
-    }
-    
-    // Validate swimlane kind using the shared validation function
-    const validationError = validateBlockInSwimlane('view', swimlane.data?.kind);
-    if (validationError) {
-      console.warn(validationError);
-      showToast({
-        message: validationError,
-        type: 'error',
-        duration: 5000
-      });
-      return;
-    }
-    
-    // Find existing blocks in this swimlane to position horizontally
-    const blocksInLane = nodes.filter(n => n.parentId === selectedSwimlaneId);
-    
-    // Use the shared block creation utility
-    const newView = createBlock({
-      blockType: 'view',
-      parentId: selectedSwimlaneId,
-      parentPosition: swimlane.position,
-      existingBlocks: blocksInLane
-    });
+    runAction('addView', {});
+  }, [runAction]);
 
-    dispatchAddView(newView);
-  }, [dispatchAddView, selectedSwimlaneId, nodes, showToast]);
-  
-  // Function to add a new UI node within selected swimlane
   const addUI = useCallback(() => {
-    // Require a selected swimlane
-    if (!selectedSwimlaneId) {
-      console.warn('No swimlane selected. Please select a swimlane first.');
-      showToast({
-        message: 'Please select a swimlane first before adding a UI block.',
-        type: 'warning',
-        duration: 5000
-      });
-      return;
-    }
-    
-    // Get the selected swimlane
-    const swimlane = nodes.find(n => n.id === selectedSwimlaneId);
-    if (!swimlane) {
-      console.warn('Selected swimlane not found');
-      return;
-    }
-    
-    // Validate swimlane kind using the shared validation function
-    const validationError = validateBlockInSwimlane('ui', swimlane.data?.kind);
-    if (validationError) {
-      console.warn(validationError);
-      showToast({
-        message: validationError,
-        type: 'error',
-        duration: 5000
-      });
-      return;
-    }
-    
-    // Find existing blocks in this swimlane to position horizontally
-    const blocksInLane = nodes.filter(n => n.parentId === selectedSwimlaneId);
-    
-    // Use the shared block creation utility
-    const newUI = createBlock({
-      blockType: 'ui',
-      parentId: selectedSwimlaneId,
-      parentPosition: swimlane.position,
-      existingBlocks: blocksInLane
-    });
+    runAction('addUi', {});
+  }, [runAction]);
 
-    dispatchAddUI(newUI);
-  }, [dispatchAddUI, selectedSwimlaneId, nodes, showToast]);
-  
-  // Function to add a new Processor node within selected swimlane
   const addProcessor = useCallback(() => {
-    // Require a selected swimlane
-    if (!selectedSwimlaneId) {
-      console.warn('No swimlane selected. Please select a swimlane first.');
-      showToast({
-        message: 'Please select a swimlane first before adding a Processor block.',
-        type: 'warning',
-        duration: 5000
-      });
-      return;
-    }
-    
-    // Get the selected swimlane
-    const swimlane = nodes.find(n => n.id === selectedSwimlaneId);
-    if (!swimlane) {
-      console.warn('Selected swimlane not found');
-      return;
-    }
-    
-    // Validate swimlane kind using the shared validation function
-    const validationError = validateBlockInSwimlane('processor', swimlane.data?.kind);
-    if (validationError) {
-      console.warn(validationError);
-      showToast({
-        message: validationError,
-        type: 'error',
-        duration: 5000
-      });
-      return;
-    }
-    
-    // Find existing blocks in this swimlane to position horizontally
-    const blocksInLane = nodes.filter(n => n.parentId === selectedSwimlaneId);
-    
-    // Use the shared block creation utility
-    const newProcessor = createBlock({
-      blockType: 'processor',
-      parentId: selectedSwimlaneId,
-      parentPosition: swimlane.position,
-      existingBlocks: blocksInLane
-    });
-
-    dispatchAddProcessor(newProcessor);
-  }, [dispatchAddProcessor, selectedSwimlaneId, nodes, showToast]);
+    runAction('addProcessor', {});
+  }, [runAction]);
 
   // Helper function to check if a node should have horizontal-only movement
   const shouldConstrainToHorizontalMovement = useCallback((nodeType?: string): boolean => {
@@ -542,109 +246,62 @@ const AppContent = () => {
       // Only dispatch if position has changed from last saved positionPerDrop
       if (positionChanged) {
         console.log(`Position changed for ${node.id}, dispatching MOVE_NODE`);
-        dispatch({
-          type: EventTypes.ModelingEditor.MOVE_NODE,
-          payload: {
-            nodeId: node.id,
-            position: finalPosition
-          }
-        });
+        runAction('moveNode', { nodeId: node.id, position: finalPosition });
       } else {
         console.log(`Position unchanged for ${node.id}, skipping MOVE_NODE dispatch`);
       }
     },
-    [dispatch, nodes, shouldConstrainToHorizontalMovement]
+    [nodes, shouldConstrainToHorizontalMovement, runAction]
   );
   
   // Handle connections between nodes
   const onConnect = useCallback(
     (connection: Connection) => {
-      // Find the source and target nodes
-      const sourceNode = nodes.find(node => node.id === connection.source);
-      const targetNode = nodes.find(node => node.id === connection.target);
-      
-      // Validate the connection against event modeling patterns
-      const validationResult = isValidConnection(sourceNode || null, targetNode || null);
-      
-      if (validationResult.valid) {
-        // Enhance the connection with pattern type
-        const patternType = getConnectionPatternType(sourceNode || null, targetNode || null);
-        const enhancedConnection = {
-          ...connection,
-          data: {
-            patternType,
-            priority: EdgePriority.MEDIUM // Using MEDIUM instead of NORMAL which doesn't exist
-          }
-        };
-        
-        dispatch({
-          type: EventTypes.ReactFlow.NEW_CONNECTION,
-          payload: enhancedConnection
-        });
-      } else {
-        console.warn('This connection is not allowed based on event modeling patterns.');  
-        showToast({
-          message: 'This connection is not allowed based on event modeling patterns.',
-          type: 'error',
-          duration: 5000
-        });
-        return;}
+      runAction('newConnection', {
+        source: connection.source,
+        target: connection.target,
+        sourceHandle: connection.sourceHandle,
+        targetHandle: connection.targetHandle
+      });
     },
-    [dispatch, nodes, showToast]
+    [runAction]
   );
   
   // Functions for updating node properties
   // --- Memoized dispatchUpdate* functions for stable references ---
 const dispatchUpdateNodeLabel = useCallback(
   (nodeId: string, label: string) => {
-    // Dispatch the node label update event
-    // The schema update will be handled in the handleUpdateNodeLabel function in eventSourcing.ts
-    dispatch({
-      type: EventTypes.ModelingEditor.UPDATE_NODE_LABEL,
-      payload: { nodeId, label }
-    });
+    runAction('updateNodeLabel', { nodeId, label });
   },
-  [dispatch]
+  [runAction]
 );
 
 const dispatchUpdateCommandParameters = useCallback(
   (nodeId: string, parameters: Record<string, string>) => {
-    dispatch({
-      type: EventTypes.ModelingEditor.UPDATE_COMMAND_PARAMETERS,
-      payload: { nodeId, parameters }
-    });
+    runAction('updateCommandParameters', { nodeId, parameters });
   },
-  [dispatch]
+  [runAction]
 );
 
 const dispatchUpdateEventPayload = useCallback(
   (nodeId: string, payload: Record<string, any>) => {
-    dispatch({
-      type: EventTypes.ModelingEditor.UPDATE_EVENT_PAYLOAD,
-      payload: { nodeId, payload }
-    });
+    runAction('updateEventPayload', { nodeId, payload });
   },
-  [dispatch]
+  [runAction]
 );
 
 const dispatchUpdateViewSources = useCallback(
   (nodeId: string, sourceEvents: string[]) => {
-    dispatch({
-      type: EventTypes.ModelingEditor.UPDATE_VIEW_SOURCES,
-      payload: { nodeId, sourceEvents }
-    });
+    runAction('updateViewSources', { nodeId, sourceEvents });
   },
-  [dispatch]
+  [runAction]
 );
 
 const dispatchRemoveNode = useCallback(
   (nodeId: string) => {
-    dispatch({
-      type: EventTypes.ModelingEditor.REMOVE_NODE,
-      payload: { nodeId }
-    });
+    runAction('removeNode', { nodeId });
   },
-  [dispatch]
+  [runAction]
 );
 // --- End memoized dispatchUpdate* functions ---
   
@@ -921,13 +578,13 @@ const dispatchRemoveNode = useCallback(
 
   // --- Memoize customNodeTypes with stable dispatchUpdate* dependencies ---
 const customNodeTypes = useMemo(() => createCustomNodeTypes({
-  dispatch,
+  executeAction: runAction,
   dispatchUpdateNodeLabel,
   dispatchUpdateCommandParameters,
   dispatchUpdateEventPayload,
   dispatchUpdateViewSources,
   dispatchRemoveNode
-}), [dispatch, dispatchUpdateNodeLabel, dispatchUpdateCommandParameters, dispatchUpdateEventPayload, dispatchUpdateViewSources, dispatchRemoveNode]);
+}), [runAction, dispatchUpdateNodeLabel, dispatchUpdateCommandParameters, dispatchUpdateEventPayload, dispatchUpdateViewSources, dispatchRemoveNode]);
 
 // Define custom edge types with appropriate styling and enhanced edge data
 const edgeTypes = useMemo(() => createCustomEdgeTypes(), []);
@@ -946,6 +603,7 @@ const edgeTypes = useMemo(() => createCustomEdgeTypes(), []);
         onImportEvents={onImportEvents}
         onCompressSnapshot={onCompressSnapshot}
         onImportModelState={importModelState}
+        onCliCommand={onCliCommand}
         selectedSwimlaneId={selectedSwimlaneId}
         nodes={nodes}
       />

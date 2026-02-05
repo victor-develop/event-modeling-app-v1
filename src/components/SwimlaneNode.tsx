@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useState, useRef, useEffect } from 'react';
-import { Handle, Position, useReactFlow } from '@xyflow/react';
+import { Handle, Position } from '@xyflow/react';
 import type { SwimlaneNodeProps } from '../types/swimlaneTypes';
 import { 
   ALLOWED_BLOCK_TYPES, 
@@ -7,17 +7,16 @@ import {
   SWIMLANE_KIND_LABELS 
 } from '../types/swimlaneTypes';
 import { BLOCK_KIND_BORDERS } from '../types/blockTypes';
-import { createBlock, validateBlockInSwimlane } from '../utils/blockCreation';
 import { useToast } from '../context/ToastContext';
+import type { ActionId } from '../state/actionRegistry';
 
 const SwimlaneNode: React.FC<SwimlaneNodeProps> = ({
   id,
   data,
-  dispatchAddBlock,
+  executeAction,
   dispatchUpdateNodeLabel,
   selected,
 }) => {
-  const { getNodes } = useReactFlow();
   const { showToast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [label, setLabel] = useState(data.label);
@@ -51,36 +50,28 @@ const SwimlaneNode: React.FC<SwimlaneNodeProps> = ({
 
   // Create a block of the specific type
   const createBlockInSwimlane = useCallback((blockType: string): void => {
-    const parentNode = getNodes().find((node) => node.id === id);
-    if (!parentNode) return;
+    const normalizedBlockType = blockType.toLowerCase();
+    const actionIdMap: Record<string, ActionId> = {
+      trigger: 'addTrigger',
+      command: 'addCommand',
+      event: 'addEvent',
+      view: 'addView',
+      ui: 'addUi',
+      processor: 'addProcessor',
+    };
 
-    // Validate if this block type can be added to this swimlane kind
-    const swimlaneKind = parentNode.data?.kind as string;
-    const validationError = validateBlockInSwimlane(blockType.toLowerCase(), swimlaneKind);
-    if (validationError) {
-      console.warn(validationError);
+    const actionId = actionIdMap[normalizedBlockType];
+    if (!actionId) {
       showToast({
-        message: validationError,
+        message: `Unknown block type: ${blockType}`,
         type: 'error',
-        duration: 5000
+        duration: 5000,
       });
       return;
     }
 
-    // Get existing blocks in this swimlane
-    const existingBlocks = getNodes().filter((node) => node.parentId === id);
-    
-    // Use the shared block creation utility
-    const newBlock = createBlock({
-      blockType: blockType.toLowerCase(),
-      parentId: id,
-      parentPosition: parentNode.position,
-      existingBlocks: existingBlocks
-    });
-
-    // The swimlane width update logic is handled in the appReducer (ADD_BLOCK case)
-    dispatchAddBlock(newBlock);
-  }, [id, getNodes, dispatchAddBlock]);
+    executeAction(actionId, { swimlaneId: id });
+  }, [id, executeAction, showToast]);
 
   const handleDoubleClick = useCallback(() => {
     setIsEditing(true);

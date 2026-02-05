@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useCallback, useState } from 'react';
 
 interface TopbarProps {
   onAddSwimlane: (kind: string) => void;
@@ -12,6 +12,7 @@ interface TopbarProps {
   onImportEvents: () => void;
   onCompressSnapshot: () => void;
   onImportModelState?: () => void; // Optional new prop for direct model state import
+  onCliCommand?: (rawCommand: string) => { ok: boolean };
   selectedSwimlaneId: string | null;
   nodes: any[]; // Using any[] for simplicity, could be more specific with Node type
 }
@@ -28,9 +29,20 @@ const Topbar: React.FC<TopbarProps> = ({
   onImportEvents, 
   onCompressSnapshot,
   onImportModelState,
+  onCliCommand,
   selectedSwimlaneId,
   nodes
 }) => {
+  const [cliInput, setCliInput] = useState('');
+
+  const handleCliSubmit = useCallback(() => {
+    if (!onCliCommand) return;
+    const result = onCliCommand(cliInput);
+    if (result.ok) {
+      setCliInput('');
+    }
+  }, [cliInput, onCliCommand]);
+
   // Handle add swimlane button clicks for different types
   const handleAddEventSwimlane = () => {
     onAddSwimlane('event');
@@ -179,7 +191,35 @@ const Topbar: React.FC<TopbarProps> = ({
           )}
         </div>
       </div>
-      <h2 style={{ margin: 0 }}>Event Modeling App</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+          <span style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>Command</span>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <input
+              type="text"
+              value={cliInput}
+              placeholder="Type a command (help, add, connect, jsoncmd ...)"
+              onChange={(e) => setCliInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleCliSubmit();
+                }
+              }}
+              style={{
+                padding: '4px 8px',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                minWidth: '280px'
+              }}
+            />
+            <button onClick={handleCliSubmit} disabled={!cliInput.trim()}>
+              Run
+            </button>
+          </div>
+        </div>
+        <h2 style={{ margin: 0 }}>Event Modeling App</h2>
+      </div>
     </div>
   );
 };

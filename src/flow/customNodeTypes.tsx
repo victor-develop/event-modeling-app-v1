@@ -9,14 +9,14 @@ import ProcessorNode from '../components/nodes/ProcessorNode';
 
 // The dispatch* functions must be passed in from App for correct closure
 export function createCustomNodeTypes({
-  dispatch,
+  executeAction,
   dispatchUpdateNodeLabel,
   dispatchUpdateCommandParameters,
   dispatchUpdateEventPayload,
   dispatchUpdateViewSources,
   dispatchRemoveNode
 }: {
-  dispatch: any,
+  executeAction: (actionId: import('../state/actionRegistry').ActionId, input: unknown) => import('../state/actionRegistry').ActionResult,
   dispatchUpdateNodeLabel: (nodeId: string, label: string) => void,
   dispatchUpdateCommandParameters: (nodeId: string, parameters: Record<string, string>) => void,
   dispatchUpdateEventPayload: (nodeId: string, payload: Record<string, any>) => void,
@@ -27,32 +27,7 @@ export function createCustomNodeTypes({
     swimlane: (nodeProps: any) => (
       <SwimlaneNode
         {...nodeProps}
-        dispatchAddBlock={(blockData: any) => {
-          switch (blockData.type) {
-            case 'trigger':
-              dispatch({ type: 'ADD_TRIGGER', payload: blockData });
-              break;
-            case 'command':
-              dispatch({ type: 'ADD_COMMAND', payload: blockData });
-              break;
-            case 'event':
-              dispatch({ type: 'ADD_EVENT', payload: blockData });
-              break;
-            case 'view':
-              dispatch({ type: 'ADD_VIEW', payload: blockData });
-              break;
-            case 'ui':
-            case 'UI':
-              dispatch({ type: 'ADD_UI', payload: blockData });
-              break;
-            case 'processor':
-            case 'Processor':
-              dispatch({ type: 'ADD_PROCESSOR', payload: blockData });
-              break;
-            default:
-              console.error(`Unknown block type: ${blockData.type}`);
-          }
-        }}
+        executeAction={executeAction}
         dispatchUpdateNodeLabel={dispatchUpdateNodeLabel}
       />
     ),

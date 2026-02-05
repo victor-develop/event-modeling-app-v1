@@ -51,7 +51,7 @@ export const SWIMLANE_KIND_COLORS: Record<string, string> = {
 export interface SwimlaneNodeProps {
   id: string;
   data: SwimlaneNodeData;
-  dispatchAddBlock: (blockData: any) => void;
+  executeAction: (actionId: import('../state/actionRegistry').ActionId, input: unknown) => import('../state/actionRegistry').ActionResult;
   dispatchUpdateNodeLabel: (nodeId: string, label: string) => void;
   selected?: boolean; // Added to support focus styling
 }
