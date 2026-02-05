@@ -49,6 +49,9 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({
 }) => {
   // State for active tab
   const [activeTab, setActiveTab] = useState<'history' | 'patterns' | 'details'>('history');
+
+  // Panel expand/collapse (default expanded)
+  const [isCollapsed, setIsCollapsed] = useState(false);
   
   // State to track expanded event details
   const [expandedEventIndex, setExpandedEventIndex] = useState<number | null>(null);
@@ -163,21 +166,66 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({
   return (
     <div
       style={{
-        width: '300px', // Wider panel for more information
+        width: isCollapsed ? '40px' : '300px',
+        minWidth: isCollapsed ? '40px' : undefined,
         height: '100%',
         backgroundColor: '#f8f8f8',
         borderLeft: '1px solid #eee',
-        padding: '10px',
+        padding: isCollapsed ? '10px 6px' : '10px',
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
+        transition: 'width 0.2s ease, min-width 0.2s ease',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-        <h3 style={{ marginTop: 0, marginBottom: 0 }}>Event Modeling</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isCollapsed ? 0 : '10px' }}>
+        {isCollapsed ? (
+          <button
+            type="button"
+            onClick={() => setIsCollapsed(false)}
+            title="Expand panel"
+            style={{
+              writingMode: 'vertical-rl',
+              textOrientation: 'mixed',
+              transform: 'rotate(180deg)',
+              width: '100%',
+              padding: '8px 0',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              color: '#555',
+            }}
+          >
+            History
+          </button>
+        ) : (
+          <>
+            <h3 style={{ marginTop: 0, marginBottom: 0 }}>Event Modeling</h3>
+            <button
+              type="button"
+              onClick={() => setIsCollapsed(true)}
+              title="Collapse panel"
+              aria-label="Collapse panel"
+              style={{
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                padding: '4px',
+                fontSize: '16px',
+                lineHeight: 1,
+                color: '#666',
+              }}
+            >
+              ◀
+            </button>
+          </>
+        )}
       </div>
       
-      {/* Tab navigation */}
+      {/* Tab navigation - hide when collapsed */}
+      {!isCollapsed && (
       <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '10px' }}>
         <div 
           onClick={() => setActiveTab('history')} 
@@ -213,9 +261,10 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({
           Details
         </div>
       </div>
+      )}
 
-      {/* History tab content */}
-      {activeTab === 'history' && (
+      {/* History tab content - hide when collapsed */}
+      {!isCollapsed && activeTab === 'history' && (
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
             <button onClick={handlePrev} disabled={currentEventIndex <= -1}>
@@ -326,8 +375,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({
         </>
       )}
 
-      {/* Patterns tab content */}
-      {activeTab === 'patterns' && (
+      {/* Patterns tab content - hide when collapsed */}
+      {!isCollapsed && activeTab === 'patterns' && (
         <div style={{ flexGrow: 1, overflowY: 'auto' }}>
           <div style={{ marginBottom: '15px' }}>
             <h4 style={{ marginTop: 0 }}>Pattern Summary</h4>
@@ -388,8 +437,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({
         </div>
       )}
 
-      {/* Details tab content */}
-      {activeTab === 'details' && (
+      {/* Details tab content - hide when collapsed */}
+      {!isCollapsed && activeTab === 'details' && (
         <div style={{ flexGrow: 1, overflowY: 'auto' }}>
           {!selectedElement ? (
             <div style={{ padding: '10px', textAlign: 'center', color: '#666' }}>
