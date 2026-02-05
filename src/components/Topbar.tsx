@@ -12,7 +12,7 @@ interface TopbarProps {
   onImportEvents: () => void;
   onCompressSnapshot: () => void;
   onImportModelState?: () => void; // Optional new prop for direct model state import
-  onCliCommand?: (rawCommand: string) => { ok: boolean };
+  onCliCommand?: (rawCommand: string) => { ok: boolean; message?: string; toastType?: string };
   selectedSwimlaneId: string | null;
   nodes: any[]; // Using any[] for simplicity, could be more specific with Node type
 }
@@ -34,14 +34,27 @@ const Topbar: React.FC<TopbarProps> = ({
   nodes
 }) => {
   const [cliInput, setCliInput] = useState('');
+  const [isCliExpanded, setIsCliExpanded] = useState(false);
+  const [cliFeedback, setCliFeedback] = useState<{ message: string; type: string } | null>(null);
 
   const handleCliSubmit = useCallback(() => {
     if (!onCliCommand) return;
     const result = onCliCommand(cliInput);
+    
+    setCliFeedback({ 
+      message: result.message || (result.ok ? 'Command executed successfully' : 'Command failed'),
+      type: result.toastType || (result.ok ? 'success' : 'error')
+    });
+
     if (result.ok) {
       setCliInput('');
     }
   }, [cliInput, onCliCommand]);
+
+  const toggleCli = useCallback(() => {
+    setIsCliExpanded(prev => !prev);
+    setCliFeedback(null);
+  }, []);
 
   // Handle add swimlane button clicks for different types
   const handleAddEventSwimlane = () => {
@@ -56,6 +69,7 @@ const Topbar: React.FC<TopbarProps> = ({
     onAddSwimlane('trigger');
   };
   return (
+    <>
     <div
       style={{
         padding: '10px',
@@ -191,14 +205,51 @@ const Topbar: React.FC<TopbarProps> = ({
           )}
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-          <span style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>Command</span>
-          <div style={{ display: 'flex', gap: '6px' }}>
+      <h2 style={{ margin: 0 }}>Event Modeling App</h2>
+    </div>
+    
+    <div style={{
+      backgroundColor: '#333',
+      borderBottom: '1px solid #444',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      padding: isCliExpanded ? '10px 20px' : '6px 20px',
+      animation: isCliExpanded ? 'slideDown 0.2s ease-out' : 'none'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ccc' }}>
+          <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>CLI</span>
+          {!isCliExpanded && (
+            <span style={{ fontSize: '12px', color: '#888' }}>
+              Press to expand command input
+            </span>
+          )}
+        </div>
+        <button 
+          onClick={toggleCli}
+          style={{
+            backgroundColor: isCliExpanded ? '#666' : '#444',
+            color: 'white',
+            border: 'none',
+            padding: '5px 10px',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px'
+          }}
+        >
+          {isCliExpanded ? 'Collapse' : 'Expand'}
+        </button>
+      </div>
+
+      {isCliExpanded && (
+        <>
+          <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+            <span style={{ color: '#aaa', fontFamily: 'monospace', paddingTop: '6px' }}>$</span>
             <input
               type="text"
               value={cliInput}
-              placeholder="Type a command (help, add, connect, jsoncmd ...)"
+              placeholder="Type a command (help, add, connect, jsoncmd ...) - Press Enter to run"
               onChange={(e) => setCliInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -207,20 +258,88 @@ const Topbar: React.FC<TopbarProps> = ({
                 }
               }}
               style={{
-                padding: '4px 8px',
-                border: '1px solid #ccc',
+                flexGrow: 1,
+                padding: '6px 12px',
+                backgroundColor: '#222',
+                color: '#0f0',
+                border: '1px solid #555',
                 borderRadius: '4px',
-                minWidth: '280px'
+                fontFamily: 'monospace',
+                fontSize: '14px',
+                outline: 'none'
               }}
+              autoFocus
             />
-            <button onClick={handleCliSubmit} disabled={!cliInput.trim()}>
+            <button 
+              onClick={handleCliSubmit} 
+              disabled={!cliInput.trim()}
+              style={{
+                padding: '6px 20px',
+                backgroundColor: '#444',
+                color: 'white',
+                border: '1px solid #555',
+                borderRadius: '4px',
+                cursor: cliInput.trim() ? 'pointer' : 'not-allowed'
+              }}
+            >
               Run
             </button>
           </div>
-        </div>
-        <h2 style={{ margin: 0 }}>Event Modeling App</h2>
-      </div>
+          
+          {cliFeedback && (
+            <div style={{
+              position: 'relative',
+              padding: '8px 12px',
+              backgroundColor: cliFeedback.type === 'error' ? 'rgba(244, 67, 54, 0.1)' : 
+                             cliFeedback.type === 'warning' ? 'rgba(255, 152, 0, 0.1)' :
+                             cliFeedback.type === 'info' ? 'rgba(33, 150, 243, 0.1)' :
+                             'rgba(76, 175, 80, 0.1)',
+              color: cliFeedback.type === 'error' ? '#ff8a80' : 
+                     cliFeedback.type === 'warning' ? '#ffd180' :
+                     cliFeedback.type === 'info' ? '#80d8ff' :
+                     '#b9f6ca',
+              borderLeft: `3px solid ${
+                cliFeedback.type === 'error' ? '#f44336' : 
+                cliFeedback.type === 'warning' ? '#ff9800' :
+                cliFeedback.type === 'info' ? '#2196f3' :
+                '#4caf50'
+              }`,
+              fontFamily: 'monospace',
+              fontSize: '13px',
+              whiteSpace: 'pre-wrap',
+              maxHeight: '150px',
+              overflowY: 'auto'
+            }}>
+              <button 
+                onClick={() => setCliFeedback(null)}
+                style={{
+                  position: 'absolute',
+                  top: '5px',
+                  right: '5px',
+                  background: 'none',
+                  border: 'none',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  opacity: 0.6,
+                  fontSize: '10px'
+                }}
+                title="Clear output"
+              >
+                ✕ Clear
+              </button>
+              {cliFeedback.message}
+            </div>
+          )}
+        </>
+      )}
     </div>
+    <style>{`
+      @keyframes slideDown {
+        from { transform: translateY(-10px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+    `}</style>
+    </>
   );
 };
 

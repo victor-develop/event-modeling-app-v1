@@ -68,20 +68,27 @@ const AppContent = () => {
     if (parseResult.ok === false) {
       const message = 'error' in parseResult ? parseResult.error : 'Command failed.';
       const toastType = 'toastType' in parseResult ? parseResult.toastType : 'error';
-      showToast({
-        message,
-        type: toastType || 'error',
-        duration: 5000
-      });
-      return { ok: false };
+      // Only show toast if it's a critical error not handled by the CLI feedback window
+      // But for now, let's return it so CLI window can show it
+      return { ok: false, message, toastType };
     }
 
     const actionResult = runAction(parseResult.actionId, parseResult.input);
     if (actionResult.ok && parseResult.actionId === 'addSwimlane' && 'id' in actionResult.event.payload) {
       setSelectedSwimlaneId(actionResult.event.payload.id);
     }
-    return { ok: actionResult.ok };
-  }, [runAction, showToast]);
+    
+    // Return structured result for CLI feedback
+    if (!actionResult.ok) {
+      return { 
+        ok: false, 
+        message: 'error' in actionResult ? actionResult.error : 'Action failed',
+        toastType: 'toastType' in actionResult ? actionResult.toastType : 'error'
+      };
+    }
+
+    return { ok: true };
+  }, [runAction]);
   
   // Auto-sync schema when nodes change (new blocks added)
   useEffect(() => {
