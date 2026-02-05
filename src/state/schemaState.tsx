@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useState } from 'react';
 import { PassedSchema } from 'graphql-editor';
 import { BlockInfo } from '../types/schema';
-import { parseSchemaToAST, generateSchemaFromAST, addTypeToAST, findRelatedTypes, renameTypeInAST, removeTypeFromAST, getDirectiveArgumentValue, DIRECTIVE_NAMES, NODEID_SUFFIXES, findOrphanedTypes } from '../graphql-ast-utils';
+import { parseSchemaToAST, generateSchemaFromAST, addTypeToAST, findRelatedTypes, renameTypeInAST, removeTypeFromAST, getBlockIdAndEntityTypeFromDirective, DIRECTIVE_NAMES, findOrphanedTypes, BLOCK_ENTITY_TYPES } from '../graphql-ast-utils';
 import { toCamelCase } from '../utils/stringUtils';
 import { ParserTree, ParserField } from 'graphql-js-tree';
 
@@ -42,9 +42,9 @@ const TYPE_SUFFIXES = {
 // Enhanced nodeId-based sync functions
 
 
-// Define change plan interface
+// Define change plan interface (use blockId + blockEntityType instead of nodeId)
 interface SchemaChangePlan {
-  typesToAdd: Array<{ typeName: string; blockType: string; nodeId: string }>;
+  typesToAdd: Array<{ typeName: string; blockType: string; blockId: string; blockEntityType: string }>;
   typesToRename: Array<{ oldName: string; newName: string; nodeId: string }>;
   typesToRemove: string[];
 }
@@ -80,10 +80,10 @@ const applyRenames = (ast: ParserTree, renames: Array<{ oldName: string; newName
     return renameTypeInAST(currentAST, rename.oldName, rename.newName);
   }, ast);
 
-const applyAdditions = (ast: ParserTree, additions: Array<{ typeName: string; blockType: string; nodeId: string }>): ParserTree =>
+const applyAdditions = (ast: ParserTree, additions: SchemaChangePlan['typesToAdd']): ParserTree =>
   additions.reduce((currentAST, addition) => {
-    console.log(`[DEBUG] Adding type: ${addition.typeName} (${addition.blockType})`);
-    return addTypeToAST(currentAST, addition.typeName, addition.blockType, addition.nodeId);
+    console.log(`[DEBUG] Adding type: ${addition.typeName} (${addition.blockType}) ${addition.blockEntityType}`);
+    return addTypeToAST(currentAST, addition.typeName, addition.blockType, addition.blockId, addition.blockEntityType);
   }, ast);
 
 const applyRemovals = (ast: ParserTree, removals: string[]): ParserTree =>
@@ -107,109 +107,61 @@ const pipe = function<T>(value: T) {
 };
 
 
-// Centralized mapping between block types and their generated GraphQL type names.
-// Command blocks: only Input + CommandResult (no redundant "type X" — mutation uses input/result).
-const getBlockTypeNames = (block: BlockInfo): string[] => {
+// Centralized mapping: type names and their blockEntityType per block.
+// Command: input + result; event/view: single 'block'.
+const getBlockTypeEntries = (block: BlockInfo): Array<{ typeName: string; blockEntityType: string }> => {
   const typeName = toCamelCase(block.title);
-  
   switch (block.type) {
     case 'command':
       return [
-        `${typeName}${TYPE_SUFFIXES.INPUT}`,
-        `${typeName}${TYPE_SUFFIXES.COMMAND_RESULT}`,
+        { typeName: `${typeName}${TYPE_SUFFIXES.INPUT}`, blockEntityType: BLOCK_ENTITY_TYPES.INPUT },
+        { typeName: `${typeName}${TYPE_SUFFIXES.COMMAND_RESULT}`, blockEntityType: BLOCK_ENTITY_TYPES.RESULT },
       ];
     case 'event':
-      return [typeName];
     case 'view':
-      return [typeName];
     default:
-      return [typeName];
+      return [{ typeName, blockEntityType: BLOCK_ENTITY_TYPES.BLOCK }];
   }
-};
-
-// Generate the correct nodeId for a specific type within a block
-const getNodeIdForType = (block: BlockInfo, typeName: string): string => {
-  const baseTypeName = toCamelCase(block.title);
-  
-  if (block.type === 'command') {
-    if (typeName === `${baseTypeName}${TYPE_SUFFIXES.INPUT}`) {
-      return `${block.id}${NODEID_SUFFIXES.INPUT}`;
-    } else if (typeName === `${baseTypeName}${TYPE_SUFFIXES.COMMAND_RESULT}`) {
-      return `${block.id}${NODEID_SUFFIXES.RESULT}`;
-    } else if (typeName === baseTypeName) {
-      // Mutation field uses base nodeId
-      return block.id;
-    }
-  }
-  
-  // For non-command blocks or unrecognized patterns, use base nodeId
-  return block.id;
 };
 
 /**
- * Analyze what schema changes are needed for a block without applying them
- * Uses existing helper functions for better code reuse
+ * Analyze what schema changes are needed for a block without applying them.
+ * Matches existing types by blockId + blockEntityType (from @eventModelingBlock).
  */
 const analyzeBlockSchemaChanges = (block: BlockInfo, ast: ParserTree): SchemaChangePlan => {
-  const requiredTypeNames = getBlockTypeNames(block);
-  
-  console.log(`[DEBUG] ===== analyzeBlockSchemaChanges for block: ${block.id} ${block.title} (${block.type}) =====`);
-  console.log(`[DEBUG] Required type names:`, requiredTypeNames);
-  
+  const requiredEntries = getBlockTypeEntries(block);
   const changes: SchemaChangePlan = {
     typesToAdd: [],
     typesToRename: [],
     typesToRemove: []
   };
-  
-  // Use findRelatedTypes to get all existing types for this block
+
   const existingRelatedTypes = findRelatedTypes(ast, block.id);
-  console.log(`[DEBUG] Found ${existingRelatedTypes.length} existing related types for block ${block.id}`);
-  
-  // Create a map of existing types by their nodeId for quick lookup
-  const existingTypesByNodeId = new Map<string, ParserField>();
+  const existingByBlockEntityType = new Map<string, ParserField>();
   existingRelatedTypes.forEach(type => {
-    // Extract nodeId from the type's directive
     const directive = type.directives?.find(d => d.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK);
-    if (directive) {
-      const nodeIdArg = directive.args?.find(arg => arg.name === 'nodeId');
-      if (nodeIdArg) {
-        const nodeIdValue = getDirectiveArgumentValue(nodeIdArg);
-        if (nodeIdValue) {
-          existingTypesByNodeId.set(nodeIdValue, type);
-        }
-      }
-    }
+    const { blockId: bid, blockEntityType: ety } = getBlockIdAndEntityTypeFromDirective(directive);
+    if (bid && ety) existingByBlockEntityType.set(`${bid}\t${ety}`, type);
   });
-  // Check each required type with its specific nodeId
-  for (const typeName of requiredTypeNames) {
-    // Get the correct nodeId for this specific type
-    const typeNodeId = getNodeIdForType(block, typeName);
-    
-    console.log(`[DEBUG] Checking type ${typeName} with nodeId ${typeNodeId}`);
-    
-    // Check if we have an existing type with this nodeId
-    const existingType = existingTypesByNodeId.get(typeNodeId);
-    
+
+  for (const { typeName, blockEntityType } of requiredEntries) {
+    const key = `${block.id}\t${blockEntityType}`;
+    const existingType = existingByBlockEntityType.get(key);
+
     if (existingType) {
-      // Type exists with this nodeId - check if name matches
       if (existingType.name !== typeName) {
-        console.log(`[DEBUG] Type with nodeId ${typeNodeId} exists but has wrong name: ${existingType.name} -> ${typeName}`);
         changes.typesToRename.push({
           oldName: existingType.name,
           newName: typeName,
-          nodeId: typeNodeId
+          nodeId: key
         });
-      } else {
-        console.log(`[DEBUG] Type ${typeName} already exists with correct nodeId ${typeNodeId}`);
       }
     } else {
-      // No type found with this nodeId - need to add it
-      console.log(`[DEBUG] Type ${typeName} needs to be added for nodeId ${typeNodeId}`);
       changes.typesToAdd.push({
         typeName,
         blockType: block.type,
-        nodeId: typeNodeId
+        blockId: block.id,
+        blockEntityType
       });
     }
   }

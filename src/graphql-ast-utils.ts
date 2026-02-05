@@ -27,7 +27,16 @@ export const DIRECTIVE_NAMES = {
 } as const;
 
 export const DIRECTIVE_ARGS = {
-  NODE_ID: 'nodeId'
+  NODE_ID: 'nodeId',
+  BLOCK_ID: 'blockId',
+  BLOCK_ENTITY_TYPE: 'blockEntityType'
+} as const;
+
+/** blockEntityType: 'block' = single type (event/view); 'input' | 'result' = command input/result */
+export const BLOCK_ENTITY_TYPES = {
+  BLOCK: 'block',
+  INPUT: 'input',
+  RESULT: 'result'
 } as const;
 
 /**
@@ -108,6 +117,39 @@ export const getDirectiveArgumentValue = (arg: ParserField): string => {
   return '';
 };
 
+/** Strip optional surrounding double quotes from directive arg value (createPlainField stores type as "value") */
+const stripQuotes = (s: string): string => {
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1);
+  return s;
+};
+
+/**
+ * Get a single argument value from a directive by name
+ */
+const getDirectiveArg = (directive: ParserField | null | undefined, argName: string): string => {
+  if (!directive?.args) return '';
+  const arg = directive.args.find(a => a.name === argName);
+  return arg ? stripQuotes(getDirectiveArgumentValue(arg)) : '';
+};
+
+/**
+ * Resolve blockId and blockEntityType from @eventModelingBlock directive.
+ * Prefers blockId/blockEntityType when present; falls back to nodeId (and suffix) for old schemas.
+ */
+export const getBlockIdAndEntityTypeFromDirective = (directive: ParserField | null | undefined): { blockId: string; blockEntityType: string } => {
+  const blockId = getDirectiveArg(directive, DIRECTIVE_ARGS.BLOCK_ID);
+  const blockEntityType = getDirectiveArg(directive, DIRECTIVE_ARGS.BLOCK_ENTITY_TYPE);
+  if (blockId && blockEntityType) {
+    return { blockId, blockEntityType };
+  }
+  const nodeId = getDirectiveArg(directive, DIRECTIVE_ARGS.NODE_ID);
+  if (!nodeId) return { blockId: '', blockEntityType: '' };
+  const base = extractBaseNodeId(nodeId);
+  if (nodeId.endsWith(NODEID_SUFFIXES.INPUT)) return { blockId: base, blockEntityType: BLOCK_ENTITY_TYPES.INPUT };
+  if (nodeId.endsWith(NODEID_SUFFIXES.RESULT)) return { blockId: base, blockEntityType: BLOCK_ENTITY_TYPES.RESULT };
+  return { blockId: base, blockEntityType: BLOCK_ENTITY_TYPES.BLOCK };
+};
+
 /**
  * Extract base nodeId from composite nodeId (removes -input, -result suffixes)
  */
@@ -116,102 +158,54 @@ export const extractBaseNodeId = (nodeId: string): string => {
 };
 
 /**
- * Find all types related to a base nodeId (including composite variants)
+ * Find all types related to a block (same blockId)
  */
-export const findRelatedTypes = (ast: ParserTree, baseNodeId: string): ParserField[] => {
+export const findRelatedTypes = (ast: ParserTree, baseBlockId: string): ParserField[] => {
   if (!ast.nodes) return [];
   
   const relatedTypes: ParserField[] = [];
-  const searchPatterns = [baseNodeId, `${baseNodeId}${NODEID_SUFFIXES.INPUT}`, `${baseNodeId}${NODEID_SUFFIXES.RESULT}`];
-  
   for (const node of ast.nodes) {
-    if (node.data?.type === TypeDefinition.ObjectTypeDefinition || 
+    if (node.data?.type === TypeDefinition.ObjectTypeDefinition ||
         node.data?.type === TypeDefinition.InputObjectTypeDefinition) {
-      
-      if (node.directives) {
-        const eventModelingDirective = node.directives.find(
-          directive => directive.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK
-        );
-        
-        if (eventModelingDirective && eventModelingDirective.args) {
-          const nodeIdArg = eventModelingDirective.args.find(
-            arg => arg.name === DIRECTIVE_ARGS.NODE_ID
-          );
-          
-          if (nodeIdArg) {
-            const argValue = getDirectiveArgumentValue(nodeIdArg);
-            const rawValue = nodeIdArg.value?.value || argValue;
-            const nodeIdValue = rawValue || argValue;
-            if (searchPatterns.includes(nodeIdValue)) {
-              relatedTypes.push(node);
-            }
-          }
-        }
+      const directive = node.directives?.find(d => d.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK);
+      const { blockId } = getBlockIdAndEntityTypeFromDirective(directive);
+      if (blockId === baseBlockId) {
+        relatedTypes.push(node);
       }
     }
   }
-  
   return relatedTypes;
 };
 
 /**
- * Find a type definition by nodeId directive (supports composite nodeIds)
- * Uses safe traversal of the ParserTree structure
+ * Find a type by blockId and optional blockEntityType.
+ * If entityType is omitted, returns the first type for that block (any entity type).
+ * nodeId can be "blockId", "blockId-input", or "blockId-result" for backward compat.
  */
-export const findTypeByNodeId = (ast: ParserTree, nodeId: string): ParserField | null => {
+export const findTypeByNodeId = (ast: ParserTree, nodeId: string, entityType?: string): ParserField | null => {
   if (!ast?.nodes || !Array.isArray(ast.nodes) || !nodeId) {
     return null;
   }
-  
-  // Helper function to safely extract nodeId from directive
-  const extractNodeIdFromDirective = (directive: any): string | null => {
-    if (!directive?.args || !Array.isArray(directive.args)) {
-      return null;
-    }
-    
-    const nodeIdArg = directive.args.find(
-      (arg: any) => arg?.name === DIRECTIVE_ARGS.NODE_ID
-    );
-    
-    if (!nodeIdArg) {
-      return null;
-    }
-    
-    const argValue = getDirectiveArgumentValue(nodeIdArg);
-    const rawValue = nodeIdArg.value?.value || argValue;
-    return rawValue || argValue || null;
-  };
-  
-  // Traverse nodes safely
+  const requestedBlockId = extractBaseNodeId(nodeId);
+  const requestedEntityType = entityType ?? (
+    nodeId.endsWith(NODEID_SUFFIXES.INPUT) ? BLOCK_ENTITY_TYPES.INPUT :
+    nodeId.endsWith(NODEID_SUFFIXES.RESULT) ? BLOCK_ENTITY_TYPES.RESULT :
+    undefined
+  );
+
   for (const node of ast.nodes) {
-    // Check if this is a type definition we care about
-    const isTargetType = node?.data?.type === TypeDefinition.ObjectTypeDefinition || 
+    const isTargetType = node?.data?.type === TypeDefinition.ObjectTypeDefinition ||
                         node?.data?.type === TypeDefinition.InputObjectTypeDefinition;
-    
-    if (!isTargetType || !node.directives || !Array.isArray(node.directives)) {
-      continue;
-    }
-    
-    // Look for the eventModeling directive
-    const eventModelingDirective = node.directives.find(
-      (directive: any) => directive?.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK
-    );
-    
-    if (!eventModelingDirective) {
-      continue;
-    }
-    
-    const nodeIdValue = extractNodeIdFromDirective(eventModelingDirective);
-    if (!nodeIdValue) {
-      continue;
-    }
-    
-    // Support both exact match and base nodeId match for composite nodeIds
-    if (nodeIdValue === nodeId || extractBaseNodeId(nodeIdValue) === nodeId) {
-      return node;
-    }
+    if (!isTargetType || !node.directives?.length) continue;
+
+    const directive = node.directives.find((d: any) => d?.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK);
+    if (!directive) continue;
+
+    const { blockId, blockEntityType } = getBlockIdAndEntityTypeFromDirective(directive);
+    if (blockId !== requestedBlockId) continue;
+    if (requestedEntityType != null && blockEntityType !== requestedEntityType) continue;
+    return node;
   }
-  
   return null;
 };
 
@@ -305,29 +299,32 @@ const updateFieldTypeReferences = (field: ParserField, oldName: string, newName:
 };
 
 /**
- * Add a new type to the AST
+ * Add a new type to the AST.
+ * blockEntityType: 'block' | 'input' | 'result' (use 'block' for event/view; 'input'|'result' for command).
  */
-export const addTypeToAST = (ast: ParserTree, typeName: string, blockType: string, nodeId: string): ParserTree => {
+export const addTypeToAST = (
+  ast: ParserTree,
+  typeName: string,
+  blockType: string,
+  blockId: string,
+  blockEntityType: string
+): ParserTree => {
   if (!ast.nodes) {
     ast.nodes = [];
   }
 
-  // Create the directive with proper argument structure
+  const nodeId = blockEntityType === BLOCK_ENTITY_TYPES.BLOCK
+    ? blockId
+    : `${blockId}${blockEntityType === BLOCK_ENTITY_TYPES.INPUT ? NODEID_SUFFIXES.INPUT : NODEID_SUFFIXES.RESULT}`;
+
   const eventModelingDirective = createPlainDirectiveImplementation({
     name: 'eventModelingBlock',
     args: [
-      createPlainField({
-        name: 'nodeId',
-        type: `"${nodeId}"`
-      }),
-      createPlainField({
-        name: 'blockType', 
-        type: `"${blockType}"`
-      }),
-      createPlainField({
-        name: 'version',
-        type: '1'
-      })
+      createPlainField({ name: 'nodeId', type: `"${nodeId}"` }),
+      createPlainField({ name: 'blockType', type: `"${blockType}"` }),
+      createPlainField({ name: 'blockId', type: `"${blockId}"` }),
+      createPlainField({ name: 'blockEntityType', type: `"${blockEntityType}"` }),
+      createPlainField({ name: 'version', type: '1' })
     ]
   });
 
@@ -377,46 +374,22 @@ export const removeTypeFromAST = (ast: ParserTree, typeName: string): ParserTree
 };
 
 /**
- * Find orphaned types (types with eventModelingBlock directive but no corresponding active block).
- * Uses extractBaseNodeId so composite nodeIds (e.g. block-123-input, block-123-result) are
- * considered part of the same block (block-123) and not removed when that block is active.
+ * Find orphaned types (types with eventModelingBlock whose blockId is not in active blocks).
  */
 export const findOrphanedTypes = (ast: ParserTree, activeBlocks: BlockInfo[]): ParserField[] => {
   if (!ast.nodes) return [];
-  
-  const activeNodeIds = new Set(activeBlocks.map(block => block.id));
+  const activeBlockIds = new Set(activeBlocks.map(block => block.id));
   const orphanedTypes: ParserField[] = [];
-  
+
   for (const node of ast.nodes) {
-    if (node.data?.type === TypeDefinition.ObjectTypeDefinition || 
-        node.data?.type === TypeDefinition.InputObjectTypeDefinition) {
-      
-      if (node.directives) {
-        const eventModelingDirective = node.directives.find(
-          directive => directive.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK
-        );
-        
-        if (eventModelingDirective && eventModelingDirective.args) {
-          const nodeIdArg = eventModelingDirective.args.find(
-            arg => arg.name === DIRECTIVE_ARGS.NODE_ID
-          );
-          
-          if (nodeIdArg) {
-            const argValue = getDirectiveArgumentValue(nodeIdArg);
-            const rawValue = nodeIdArg.value?.value || argValue;
-            const nodeIdValue = rawValue || argValue;
-            if (nodeIdValue) {
-              const baseNodeId = extractBaseNodeId(nodeIdValue);
-              if (!activeNodeIds.has(baseNodeId)) {
-                orphanedTypes.push(node);
-              }
-            }
-          }
-        }
-      }
+    if (node.data?.type !== TypeDefinition.ObjectTypeDefinition &&
+        node.data?.type !== TypeDefinition.InputObjectTypeDefinition) continue;
+    const directive = node.directives?.find(d => d.name === DIRECTIVE_NAMES.EVENT_MODELING_BLOCK);
+    const { blockId } = getBlockIdAndEntityTypeFromDirective(directive);
+    if (blockId && !activeBlockIds.has(blockId)) {
+      orphanedTypes.push(node);
     }
   }
-  
   return orphanedTypes;
 };
 
@@ -444,54 +417,23 @@ export const extractTypeNames = (ast: ParserTree): string[] => {
 export const getTypeNamesFromAST = extractTypeNames;
 
 /**
- * Create an event modeling directive with nodeId and blockType
+ * Create an event modeling directive with nodeId, blockType, blockId, blockEntityType
  */
 export const createEventModelingDirective = (nodeId: string, blockType: string, version: number = 1): ParserField => {
+  const blockId = extractBaseNodeId(nodeId);
+  const blockEntityType = nodeId.endsWith(NODEID_SUFFIXES.INPUT)
+    ? BLOCK_ENTITY_TYPES.INPUT
+    : nodeId.endsWith(NODEID_SUFFIXES.RESULT)
+      ? BLOCK_ENTITY_TYPES.RESULT
+      : BLOCK_ENTITY_TYPES.BLOCK;
   return createPlainDirectiveImplementation({
     name: 'eventModelingBlock',
     args: [
-      {
-        name: 'nodeId',
-        id: `eventModelingBlock-nodeId-${nodeId}`,
-        type: {
-          fieldType: {
-            name: nodeId,
-            type: Options.name
-          }
-        },
-        data: { type: Instances.Argument },
-        args: [],
-        interfaces: [],
-        directives: []
-      },
-      {
-        name: 'blockType',
-        id: `eventModelingBlock-blockType-${blockType}`,
-        type: {
-          fieldType: {
-            name: blockType,
-            type: Options.name
-          }
-        },
-        data: { type: Instances.Argument },
-        args: [],
-        interfaces: [],
-        directives: []
-      },
-      {
-        name: 'version',
-        id: `eventModelingBlock-version-${version}`,
-        type: {
-          fieldType: {
-            name: String(version),
-            type: Options.name
-          }
-        },
-        data: { type: Instances.Argument },
-        args: [],
-        interfaces: [],
-        directives: []
-      }
+      { name: 'nodeId', id: `eventModelingBlock-nodeId-${nodeId}`, type: { fieldType: { name: nodeId, type: Options.name } }, data: { type: Instances.Argument }, args: [], interfaces: [], directives: [] },
+      { name: 'blockType', id: `eventModelingBlock-blockType-${blockType}`, type: { fieldType: { name: blockType, type: Options.name } }, data: { type: Instances.Argument }, args: [], interfaces: [], directives: [] },
+      { name: 'blockId', id: `eventModelingBlock-blockId-${blockId}`, type: { fieldType: { name: blockId, type: Options.name } }, data: { type: Instances.Argument }, args: [], interfaces: [], directives: [] },
+      { name: 'blockEntityType', id: `eventModelingBlock-blockEntityType-${blockEntityType}`, type: { fieldType: { name: blockEntityType, type: Options.name } }, data: { type: Instances.Argument }, args: [], interfaces: [], directives: [] },
+      { name: 'version', id: `eventModelingBlock-version-${version}`, type: { fieldType: { name: String(version), type: Options.name } }, data: { type: Instances.Argument }, args: [], interfaces: [], directives: [] }
     ]
   });
 };
@@ -500,58 +442,12 @@ export const createEventModelingDirective = (nodeId: string, blockType: string, 
  * Create a type definition with event modeling directive
  */
 export const createTypeDefinitionWithDirective = (
-  typeName: string, 
-  blockType: string, 
+  typeName: string,
+  blockType: string,
   nodeId: string,
   customFields: { name: string; type: string }[] = []
 ): ParserField => {
-  const eventModelingDirective = createPlainDirectiveImplementation({
-    name: 'eventModelingBlock',
-    args: [
-      {
-        name: 'nodeId',
-        id: `eventModelingBlock-nodeId-${nodeId}`,
-        type: {
-          fieldType: {
-            name: nodeId,
-            type: Options.name
-          }
-        },
-        data: { type: Instances.Argument },
-        args: [],
-        interfaces: [],
-        directives: []
-      },
-      {
-        name: 'blockType',
-        id: `eventModelingBlock-blockType-${blockType}`,
-        type: {
-          fieldType: {
-            name: blockType,
-            type: Options.name
-          }
-        },
-        data: { type: Instances.Argument },
-        args: [],
-        interfaces: [],
-        directives: []
-      },
-      {
-        name: 'version',
-        id: `eventModelingBlock-version-1`,
-        type: {
-          fieldType: {
-            name: '1',
-            type: Options.name
-          }
-        },
-        data: { type: Instances.Argument },
-        args: [],
-        interfaces: [],
-        directives: []
-      }
-    ]
-  });
+  const eventModelingDirective = createEventModelingDirective(nodeId, blockType, 1);
 
   const baseFields = [
     createPlainField({

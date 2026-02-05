@@ -101,16 +101,17 @@ describe('NodeId-Based Schema Synchronization', () => {
       expect(relatedTypes.map(t => t.name)).toContain('createUserCommandResult');
     });
 
-    it('should add new types with nodeId directives', () => {
+    it('should add new types with blockId and blockEntityType directives', () => {
       const ast = parseSchemaToAST(sampleSchemaWithDirectives);
       
-      // Add new type with nodeId
-      const updatedAST = addTypeToAST(ast, 'UserProfile', 'view', 'block-789');
+      // Add new type with blockId + blockEntityType
+      const updatedAST = addTypeToAST(ast, 'UserProfile', 'view', 'block-789', 'block');
       
-      // Verify new type exists directly in AST
-      const newType = findTypeByNodeId(updatedAST, 'block-789');
-      expect(newType).toBeDefined();
-      expect(newType?.name).toBe('UserProfile');
+      // Verify new type exists by blockId (findRelatedTypes uses blockId)
+      const related = findRelatedTypes(updatedAST, 'block-789');
+      expect(related).toHaveLength(1);
+      expect(related[0].name).toBe('UserProfile');
+      expect(findTypeByNodeId(updatedAST, 'block-789')).toBeDefined();
     });
 
     it('should identify orphaned types correctly', () => {
@@ -240,7 +241,7 @@ describe('NodeId-Based Schema Synchronization', () => {
       `;
       
       const ast = parseSchemaToAST(mixedSchema);
-      const updatedAST = addTypeToAST(ast, 'NewType', 'event', 'block-new');
+      const updatedAST = addTypeToAST(ast, 'NewType', 'event', 'block-new', 'block');
       const updatedSchema = generateSchemaFromAST(updatedAST);
       
       // Verify both legacy and new types exist

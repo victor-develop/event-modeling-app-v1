@@ -121,7 +121,7 @@ describe('GraphQL AST Utils', () => {
   describe('addTypeToAST', () => {
     it('should add new type to AST', () => {
       const ast = parseSchemaToAST('type Query { hello: String }');
-      const updatedAST = addTypeToAST(ast, 'NewType', 'command', 'new-id');
+      const updatedAST = addTypeToAST(ast, 'NewType', 'command', 'new-id', 'block');
       
       const typeNames = getTypeNamesFromAST(updatedAST);
       expect(typeNames).toContain('NewType');
@@ -130,7 +130,7 @@ describe('GraphQL AST Utils', () => {
 
     it('should handle empty AST', () => {
       const emptyAST = { nodes: [] };
-      const updatedAST = addTypeToAST(emptyAST, 'FirstType', 'event', 'first-id');
+      const updatedAST = addTypeToAST(emptyAST, 'FirstType', 'event', 'first-id', 'block');
       
       expect(updatedAST.nodes).toHaveLength(1);
       expect(updatedAST.nodes?.[0].name).toBe('FirstType');

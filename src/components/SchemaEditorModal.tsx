@@ -11,6 +11,8 @@ const DEFAULT_LIBRARIES = `
 directive @eventModelingBlock(
   nodeId: String!
   blockType: String!
+  blockId: String!
+  blockEntityType: String!
   version: Int
 ) on OBJECT | INPUT_OBJECT
 `;
