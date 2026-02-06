@@ -15,7 +15,7 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({
   onNodeSelect,
   onEdgeSelect
 }) => {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'validation' | 'statistics'>('validation');
   const [validationResults, setValidationResults] = useState<ValidationMessage[]>([]);
   const [statistics, setStatistics] = useState<ModelStatistics | null>(null);
